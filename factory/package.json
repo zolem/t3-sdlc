@@ -1,7 +1,7 @@
 {
-  "name": "@orchestrate-sdlc/factory",
+  "name": "@t3-sdlc/factory",
   "version": "0.1.0",
-  "description": "Code Mode MCP server for the orchestrate-sdlc T3 factory: roles, policy, run store, ledger, checks.",
+  "description": "Code Mode MCP server for the t3-sdlc T3 factory: roles, policy, run store, ledger, checks.",
   "private": true,
   "type": "module",
   "bin": {

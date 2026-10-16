@@ -12,7 +12,7 @@ import { Registry } from './registry.js';
 import { runCode } from './sandbox.js';
 import { loadModules } from './modules/index.js';
 
-const INSTRUCTIONS = `The orchestrate-sdlc factory. Everything an SDLC agent needs lives behind two tools.
+const INSTRUCTIONS = `The t3-sdlc factory. Everything an SDLC agent needs lives behind two tools.
 
 1. search: discover capabilities. Pass {query: "write a run file"} for keyword search, or
    {code: "async () => catalog.filter(c => c.module === 'run')"} to filter the typed catalog yourself.

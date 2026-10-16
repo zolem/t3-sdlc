@@ -1,12 +1,12 @@
 {
-  "name": "orchestrate-sdlc",
+  "name": "t3-sdlc",
   "description": "T3-native SDLC factory: $orchestrate a ticket or brief and every step is delegated to routed models, with plan and PR-stack review gates.",
   "version": "2.0.0",
   "author": {
-    "name": "SchoolAI"
+    "name": "Rudy Garcia"
   },
-  "homepage": "https://github.com/SchoolAI/orchestrate-sdlc",
-  "repository": "https://github.com/SchoolAI/orchestrate-sdlc",
+  "homepage": "https://github.com/zolem/t3-sdlc",
+  "repository": "https://github.com/zolem/t3-sdlc",
   "license": "MIT",
   "keywords": [
     "sdlc",
@@ -16,9 +16,9 @@
   ],
   "skills": "./plugin/skills/",
   "interface": {
-    "displayName": "orchestrate-sdlc",
+    "displayName": "t3-sdlc",
     "shortDescription": "T3 SDLC factory with routed models and review gates",
-    "developerName": "SchoolAI",
+    "developerName": "Rudy Garcia",
     "category": "Productivity",
     "capabilities": [
       "Interactive",

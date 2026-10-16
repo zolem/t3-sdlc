@@ -84,7 +84,7 @@ function block(run, scope, info, env) {
  */
 export function taskText(runId, id, role, mode) {
   return [
-    `You are the \`${role}\` agent (${mode} mode) for orchestrate-sdlc run \`${runId}\`, dispatch \`${id}\`.`,
+    `You are the \`${role}\` agent (${mode} mode) for t3-sdlc run \`${runId}\`, dispatch \`${id}\`.`,
     'Your full instructions are served by the `factory` MCP server, not by this message.',
     '1. Run `pwd` and keep the result as YOUR_CWD.',
     '2. Call the factory `execute` tool with `cwd` set to YOUR_CWD and code:',

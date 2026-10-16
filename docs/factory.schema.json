@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "orchestrate-sdlc repo contract (.orchestrate/factory.json)",
+  "title": "t3-sdlc repo contract (.orchestrate/factory.json)",
   "type": "object",
   "additionalProperties": false,
   "required": ["checks"],

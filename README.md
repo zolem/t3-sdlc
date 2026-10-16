@@ -1,4 +1,6 @@
-# orchestrate-sdlc
+# t3-sdlc
+
+> Primary repo: `zolem/t3-sdlc`. `SchoolAI/t3-sdlc` is an internal mirror updated on every push. The old subagent-based `SchoolAI/orchestrate-sdlc` is archived.
 
 A T3 Code **factory**: run `/orchestrate ABC-123` (Claude) or `$orchestrate ABC-123` (Codex) in a repo and a full SDLC runs. Each step is delegated to the provider/model your policy picks, and the run stops for you twice: to approve the plan, and to approve the PR stack.
 
@@ -38,7 +40,7 @@ The order, retries, fallbacks and gates live in code (`factory/src/lib/pipeline.
 Requires Node ≥ 22, `git`, and `gh` for publishing.
 
 ```bash
-git clone git@github.com:SchoolAI/orchestrate-sdlc.git && cd orchestrate-sdlc
+git clone git@github.com:zolem/t3-sdlc.git && cd t3-sdlc
 node bin/install.js --link-skills     # --dry-run first if you like; --uninstall to remove
 ```
 
@@ -47,8 +49,8 @@ The installer:
 - With `--link-skills`, links the `orchestrate` (foreman), `orchestrate-repo` (repo threads), `orchestrate-setup` and `generate-brief` skills into `~/.claude/skills` and `~/.agents/skills`.
 
 Alternatively, install the skills as a plugin:
-- **Claude:** `/plugin marketplace add SchoolAI/orchestrate-sdlc`
-- **Codex:** `codex plugin marketplace add SchoolAI/orchestrate-sdlc`
+- **Claude:** `/plugin marketplace add zolem/t3-sdlc`
+- **Codex:** `codex plugin marketplace add zolem/t3-sdlc`
 
 Open new T3 threads afterwards so harnesses pick up the server.
 

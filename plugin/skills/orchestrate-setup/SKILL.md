@@ -18,7 +18,7 @@ You help the user make this repo ready for `/orchestrate`. A deterministic docto
   - `factory.repo.suggest({ repo })` → a proposed `.orchestrate/factory.json` built from the repo's own scripts, plus notes, plus the `existing` contract.
   - `factory.repo.builtins()` → built-in checks (`orchestrate check <name>`) the contract can list.
 - Shell and file tools for reading the repo and editing `.orchestrate/factory.json` / `.orchestrate/workspace.json`.
-- Without the factory MCP, the same doctor is a CLI: `node <orchestrate-sdlc>/factory/bin/orchestrate.js doctor <repo> [--verify]` and `... init <repo>`.
+- Without the factory MCP, the same doctor is a CLI: `node <t3-sdlc>/factory/bin/orchestrate.js doctor <repo> [--verify]` and `... init <repo>`.
 
 ## Steps
 1. Run the doctor and show its `report` as-is. Then one line: runnable or not, and what is optional.
@@ -39,4 +39,4 @@ You help the user make this repo ready for `/orchestrate`. A deterministic docto
 - The doctor's verdict is the source of truth. Do not mark something ready that it reports as missing.
 - Only edit `.orchestrate/factory.json`, `.orchestrate/workspace.json`, and files the user explicitly approves.
 - Never invent commands. If the repo has no test command, say so: the gate is only as good as the checks it runs.
-- Docs: `docs/repo-setup.md` in the orchestrate-sdlc repo.
+- Docs: `docs/repo-setup.md` in the t3-sdlc repo.

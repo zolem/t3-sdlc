@@ -1,5 +1,5 @@
 {
-  "name": "orchestrate-sdlc",
+  "name": "t3-sdlc",
   "version": "2.0.0",
   "description": "T3-native SDLC factory: a Code Mode MCP server plus an orchestrate skill that delegates every step to routed models",
   "private": true,

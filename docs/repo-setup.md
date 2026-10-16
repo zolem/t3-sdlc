@@ -9,10 +9,10 @@ The factory runs any repo, or group of repos, that tells it three things: how to
 /orchestrate-setup            # guided: doctor → fix → re-check
 
 # Or from a shell:
-node <orchestrate-sdlc>/factory/bin/orchestrate.js init .           # print a proposed contract
-node <orchestrate-sdlc>/factory/bin/orchestrate.js init . --write   # write it
-node <orchestrate-sdlc>/factory/bin/orchestrate.js doctor .         # what can run, what is missing
-node <orchestrate-sdlc>/factory/bin/orchestrate.js doctor . --verify  # also run setup, checks, app.up
+node <t3-sdlc>/factory/bin/orchestrate.js init .           # print a proposed contract
+node <t3-sdlc>/factory/bin/orchestrate.js init . --write   # write it
+node <t3-sdlc>/factory/bin/orchestrate.js doctor .         # what can run, what is missing
+node <t3-sdlc>/factory/bin/orchestrate.js doctor . --verify  # also run setup, checks, app.up
 ```
 
 `/orchestrate` runs the same doctor before it starts. If something is missing it stops and shows you the report instead of starting a run.
@@ -42,7 +42,7 @@ The doctor checks that commands **resolve**, without running them:
 
 ```jsonc
 {
-  "$schema": "https://github.com/SchoolAI/orchestrate-sdlc/blob/main/docs/factory.schema.json",
+  "$schema": "https://github.com/zolem/t3-sdlc/blob/main/docs/factory.schema.json",
   "version": 2,
   "setup": "npm ci",
   "checks": [

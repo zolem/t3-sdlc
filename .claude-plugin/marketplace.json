@@ -1,9 +1,9 @@
 {
-  "name": "orchestrate-sdlc",
-  "owner": { "name": "SchoolAI" },
+  "name": "t3-sdlc",
+  "owner": { "name": "Rudy Garcia" },
   "plugins": [
     {
-      "name": "orchestrate-sdlc",
+      "name": "t3-sdlc",
       "source": "./plugin",
       "description": "T3-native SDLC factory: /orchestrate a ticket or brief; every step is delegated to routed models with plan and PR-stack review gates."
     }

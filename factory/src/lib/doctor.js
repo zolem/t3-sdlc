@@ -66,7 +66,7 @@ export function suggestContract(root) {
   const has = (/** @type {string} */ f) => fs.existsSync(path.join(root, f));
   const notes = [];
   /** @type {any} */
-  const c = { $schema: 'https://github.com/SchoolAI/orchestrate-sdlc/blob/main/docs/factory.schema.json', version: 2 };
+  const c = { $schema: 'https://github.com/zolem/t3-sdlc/blob/main/docs/factory.schema.json', version: 2 };
   const setup = detectSetup(root);
   if (setup) c.setup = setup;
   /** @type {{ id: string, run: string }[]} */
