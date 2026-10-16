@@ -1,0 +1,20 @@
+{
+  "name": "orchestrate-sdlc",
+  "interface": {
+    "displayName": "orchestrate-sdlc"
+  },
+  "plugins": [
+    {
+      "name": "orchestrate-sdlc",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/SchoolAI/orchestrate-sdlc.git"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

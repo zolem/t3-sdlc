@@ -1,0 +1,16 @@
+{
+  "name": "orchestrate-sdlc",
+  "version": "2.0.0",
+  "description": "T3-native SDLC factory: a Code Mode MCP server plus an orchestrate skill that delegates every step to routed models",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install-factory": "node bin/install.js",
+    "test": "npm --prefix factory test",
+    "typecheck": "npm --prefix factory run typecheck"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

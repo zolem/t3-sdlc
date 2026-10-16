@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# PATH entry for `orchestrate ...` inside factory.json commands.
+exec node "$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)/orchestrate.js" "$@"

@@ -1,0 +1,10 @@
+{
+  "name": "orchestrate-sdlc",
+  "description": "T3-native SDLC factory: /orchestrate a ticket or brief and every step is delegated to routed models, with plan and PR-stack review gates.",
+  "version": "2.0.0",
+  "author": { "name": "SchoolAI" },
+  "homepage": "https://github.com/SchoolAI/orchestrate-sdlc",
+  "repository": "https://github.com/SchoolAI/orchestrate-sdlc",
+  "license": "MIT",
+  "keywords": ["sdlc", "orchestration", "t3", "agents"]
+}

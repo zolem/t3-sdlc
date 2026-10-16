@@ -1,0 +1,221 @@
+{
+  "version": 1,
+  "notes": "Org default routing. First available target wins; later ones are fallbacks. Tune from `factory.ledger.stats()`. Override per user in ~/.orchestrate/policy.json or per repo in .orchestrate/policy.json (a role entry there replaces this role's targets). Top tier: claude-opus-5-5 and gpt-6.1-sol. Fable and Astra are reserved for specific scenarios; add them per repo or per run, not here. OpenCode models bill at API prices: keep them out of defaults; opt in per repo or run.",
+  "roles": {
+    "product-manager": {
+      "targets": [
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-sonnet-5-5",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        }
+      ]
+    },
+    "context-curator": {
+      "targets": [
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6-luna",
+          "options": {
+            "reasoningEffort": "medium"
+          }
+        },
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-sonnet-5-5",
+          "options": {
+            "effort": "medium"
+          }
+        }
+      ]
+    },
+    "architect": {
+      "targets": [
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-opus-5-5",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        }
+      ]
+    },
+    "qa-analyst": {
+      "targets": [
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6-luna",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        },
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-sonnet-5-5",
+          "options": {
+            "effort": "high"
+          }
+        }
+      ]
+    },
+    "slice-planner": {
+      "targets": [
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        },
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-opus-5-5",
+          "options": {
+            "effort": "high"
+          }
+        }
+      ]
+    },
+    "explainer": {
+      "targets": [
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-sonnet-5-5",
+          "options": {
+            "effort": "medium"
+          }
+        },
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6-luna",
+          "options": {
+            "reasoningEffort": "medium"
+          }
+        }
+      ]
+    },
+    "engineer": {
+      "targets": [
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-sonnet-5-5",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        }
+      ]
+    },
+    "manual-tester": {
+      "targets": [
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-haiku-5-5",
+          "options": {
+            "effort": "medium"
+          }
+        },
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6-luna",
+          "options": {
+            "reasoningEffort": "low"
+          }
+        }
+      ]
+    },
+    "reviewer": {
+      "note": "Per-slice review. The factory skips any target in the same family as the slice author.",
+      "targets": [
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        },
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-opus-5-5",
+          "options": {
+            "effort": "high"
+          }
+        }
+      ]
+    },
+    "feature-reviewer": {
+      "panel": 2,
+      "note": "Adversarial panel: the first two targets from distinct families review independently, then cross-examine each other.",
+      "targets": [
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-opus-5-5",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        },
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-sonnet-5-5",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6-luna",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        }
+      ]
+    },
+    "docs-writer": {
+      "targets": [
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-haiku-5-5",
+          "options": {
+            "effort": "medium"
+          }
+        },
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6-luna",
+          "options": {
+            "reasoningEffort": "medium"
+          }
+        }
+      ]
+    }
+  }
+}
