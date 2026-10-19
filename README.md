@@ -1,6 +1,6 @@
 # t3-sdlc
 
-> Primary repo: `zolem/t3-sdlc`. `SchoolAI/t3-sdlc` is an internal mirror updated on every push. The old subagent-based `SchoolAI/orchestrate-sdlc` is archived.
+> Primary repo: `zolem/t3-sdlc`. `SchoolAI/t3-sdlc` is the internal copy, updated only with releases that are ready to share. The old subagent-based `SchoolAI/orchestrate-sdlc` is archived.
 
 A T3 Code **factory**: tell any T3 thread "orchestrate ABC-123" (or a brief) in a repo and a full SDLC runs. Each step is delegated to the provider/model your policy picks, and the run stops for you twice: to approve the plan, and to approve the PR stack.
 
@@ -63,6 +63,8 @@ node factory/bin/t3-sdlc.js install --dev # working on t3-sdlc: link ~/.t3-sdlc/
 ```
 
 **Threads need Full access.** Run state lives in `~/.t3-sdlc`, outside the checkout, so sandboxed modes (e.g. Codex "auto") can't write it. The CLI detects this and says so.
+
+**Releasing:** bump `version` in `package.json` and merge to `main`. The release workflow tags `v<version>` and publishes the tarball and `install.sh`; merges without a bump publish nothing.
 
 Upgrading from the MCP version: the installer moves `~/.orchestrate` state into `~/.t3-sdlc` and removes the old `factory` MCP entries (with backups in `~/.t3-sdlc/backups/`).
 
