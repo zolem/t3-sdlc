@@ -1,20 +1,23 @@
 ---
 name: orchestrate-repo
-description: Internal to the orchestrate factory. Drives one repo's build inside a run, in a worktree the foreman launched. Started by the foreman, not by users.
-argument-hint: <runId> <repo> — foreman <threadId>
-disable-model-invocation: true
+description: Internal to the t3-sdlc factory. Drives one repo's build inside a run, in a worktree the foreman launched. The foreman starts these threads; users do not.
 ---
 
 # Orchestrate a repo (repo thread)
 
-Arguments: $ARGUMENTS
-(If empty or literally `$ARGUMENTS`, read the run id and repo from the message that started this thread.)
+The message that started this thread names the run id, the repo, and the foreman's thread id.
 
 You drive one repo's part of a factory run. You are in a T3 worktree of that repo. Run this loop yourself, in this thread: never hand the coordination to a child task. The only children you start are the factory's **dispatch** actions. You do no SDLC work yourself: you carry out the factory's actions for your scope and stay quiet. Only the factory decides when the foreman hears from you.
 
 ## Tools
-- `factory` MCP `execute`: always pass `cwd` = this thread's checkout. Your calls are `factory.orchestrator.next({ runId, repo })`, `started`, `finished`, `sent`, and `factory.workspace.prepare`.
-- T3: `delegate_task`, `task_status`, `t3_thread_send`, `t3_thread_organize`.
+- **The factory CLI**, `~/.t3-sdlc/bin/t3-sdlc`, run from this thread's checkout. Each call is one exec:
+  ```sh
+  ~/.t3-sdlc/bin/t3-sdlc exec - <<'JS'
+  async () => factory.orchestrator.next({ runId: "...", repo: "..." })
+  JS
+  ```
+  Your calls are `factory.orchestrator.next({ runId, repo })`, `started`, `finished`, `sent`, and `factory.workspace.prepare`.
+- **T3:** `delegate_task`, `task_status`, `t3_thread_send`, `t3_thread_organize`.
 
 ## Loop
 Call `factory.orchestrator.next({ runId, repo })` and handle every action in order:
@@ -31,4 +34,4 @@ Call `factory.orchestrator.next({ runId, repo })` and handle every action in ord
 ## Rules
 - Do not talk to the user, ask questions, or make decisions. When blocked, the factory tells the foreman, the foreman asks the user, and you are messaged when to continue.
 - Message other threads only through **notify** actions.
-- Never edit, build, or review anything yourself. If a factory call errors, use `t3_thread_send` to send the foreman one line with the error, then end your turn.
+- Never edit, build, or review anything yourself. If a factory call errors (including "needs full access"), use `t3_thread_send` to send the foreman one line with the error, then end your turn.

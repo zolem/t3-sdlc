@@ -1,7 +1,7 @@
 // @ts-check
 // Role → provider/model routing. Layers, lowest to highest precedence:
 //   org   <content>/policy/org.json          (bundled; set from evals)
-//   user  ~/.orchestrate/policy.json
+//   user  ~/.t3-sdlc/policy.json
 //   repo  <repo>/.orchestrate/policy.json
 //   run   overrides passed to orchestrator.start
 // A role entry in a higher layer replaces that role's `targets` wholesale and

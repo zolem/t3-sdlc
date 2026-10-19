@@ -1,11 +1,7 @@
 // @ts-check
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { APP_ROOT, VERSION } from '../lib/paths.js';
 
-const PKG = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'), 'utf8'));
-
-/** Best-effort guess at which harness spawned this server, from its environment. */
+/** Best-effort guess at which harness is calling, from the environment it passes down. */
 function detectHarness() {
   const env = process.env;
   if (env.CLAUDECODE || env.CLAUDE_CODE_ENTRYPOINT) return 'claude';
@@ -21,10 +17,10 @@ export default {
   description: 'Factory health and caller identity.',
   functions: {
     whoami: {
-      signature: 'factory.meta.whoami(): Promise<{ version: string, cwd: string, home: string, harness: string, pid: number }>',
-      description: 'Returns the factory version, the calling process working directory, the state root, and a guess at the harness.',
+      signature: 'factory.meta.whoami(): Promise<{ version: string, cwd: string, home: string, app: string, harness: string }>',
+      description: 'Returns the factory version, the working directory calls resolve against, the state root, the app root, and a guess at the harness.',
       tags: ['health', 'ping', 'identity'],
-      handler: (_args, ctx) => ({ version: PKG.version, cwd: ctx.cwd, home: ctx.home, harness: detectHarness(), pid: process.pid }),
+      handler: (_args, ctx) => ({ version: VERSION, cwd: ctx.cwd, home: ctx.home, app: APP_ROOT, harness: detectHarness() }),
     },
   },
 };

@@ -1,15 +1,14 @@
 {
   "name": "@t3-sdlc/factory",
   "version": "0.1.0",
-  "description": "Code Mode MCP server for the t3-sdlc T3 factory: roles, policy, run store, ledger, checks.",
+  "description": "The t3-sdlc factory CLI: roles, policy, run store, ledger, checks, Code Mode search/exec.",
   "private": true,
   "type": "module",
   "bin": {
-    "factory-mcp": "bin/factory-mcp.js",
+    "t3-sdlc": "bin/t3-sdlc.js",
     "orchestrate": "bin/orchestrate.js"
   },
   "scripts": {
-    "start": "node bin/factory-mcp.js",
     "test": "node --test test/*.test.js",
     "typecheck": "tsc --noEmit -p ."
   },
@@ -17,10 +16,6 @@
     "node": ">=22"
   },
   "license": "MIT",
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
-    "zod": "^4.6.7"
-  },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "typescript": "^7.0.2"

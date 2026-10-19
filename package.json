@@ -1,13 +1,14 @@
 {
   "name": "t3-sdlc",
-  "version": "2.0.0",
-  "description": "T3-native SDLC factory: a Code Mode MCP server plus an orchestrate skill that delegates every step to routed models",
+  "version": "2.1.0",
+  "description": "T3-native SDLC factory: a CLI agents drive (Code Mode search/exec) plus skills that delegate every step to routed models",
   "private": true,
   "type": "module",
   "scripts": {
-    "install-factory": "node bin/install.js",
     "test": "npm --prefix factory test",
-    "typecheck": "npm --prefix factory run typecheck"
+    "typecheck": "npm --prefix factory run typecheck",
+    "pack": "sh scripts/pack.sh",
+    "install:dev": "node factory/bin/t3-sdlc.js install --dev"
   },
   "engines": {
     "node": ">=22"

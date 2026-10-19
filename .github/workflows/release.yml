@@ -1,5 +1,9 @@
 name: release
 
+# Tag vX.Y.Z → test, pack, and publish a GitHub release with t3-sdlc.tar.gz and install.sh.
+# Users install the latest with:
+#   curl -fsSL https://github.com/<owner>/<repo>/releases/latest/download/install.sh | sh
+
 on:
   push:
     tags:
@@ -10,79 +14,33 @@ permissions:
   contents: write
 
 jobs:
-  create-release:
+  release:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Create draft release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: Orchestrate SDLC ${{ github.ref_name }}
-          draft: true
-          generate_release_notes: true
-
-  build-app:
-    needs: create-release
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            bundle: macos
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-            bundle: macos
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundle: linux
-
-    runs-on: ${{ matrix.platform }}
-
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Cache cargo
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: app/src-tauri
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Test
+        working-directory: factory
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          git config --global user.email ci@example.invalid
+          git config --global user.name ci
+          npm ci
+          npm test
+          npm run typecheck
 
-      - name: Install app dependencies
-        working-directory: app
-        run: npm install
+      - name: Pack
+        run: sh scripts/pack.sh "${{ github.ref_name }}"
 
-      - name: Build Tauri app
-        working-directory: app
-        run: npx tauri build --target ${{ matrix.target }}
-
-      - name: Collect artifacts
-        working-directory: app
-        run: |
-          mkdir -p ../release-artifacts
-          ls -laR src-tauri/target/${{ matrix.target }}/release/bundle/
-          find src-tauri/target/${{ matrix.target }}/release/bundle/ \
-            \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" \) \
-            -exec cp -v {} ../release-artifacts/ \;
-
-      - name: Attach to release
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: release-artifacts/*
+          name: t3-sdlc ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/t3-sdlc.tar.gz
+            dist/install.sh

@@ -8,11 +8,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { FACTORY_BIN } from './paths.js';
 import { addedLines, changedFiles, dirtyPaths, git, sh, sha } from './git.js';
 
 const TAIL = 3000;
-export const FACTORY_BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin');
 
 const SECRET_PATTERNS = [
   { name: 'AWS access key', re: /\bAKIA[0-9A-Z]{16}\b/ },
