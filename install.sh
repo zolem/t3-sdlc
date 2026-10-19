@@ -5,7 +5,7 @@
 # Everything lands in ~/.t3-sdlc, plus skill links in ~/.agents/skills and ~/.claude/skills.
 # Remove it all with: ~/.t3-sdlc/bin/t3-sdlc uninstall
 #
-# Env: T3_SDLC_VERSION=v2.1.0 (default: latest)  T3_SDLC_REPO=owner/repo  T3_SDLC_TARBALL=<local file>
+# Env: T3_SDLC_VERSION=v0.1.0 (default: latest)  T3_SDLC_REPO=owner/repo  T3_SDLC_TARBALL=<local file>
 set -eu
 REPO="${T3_SDLC_REPO:-zolem/t3-sdlc}"
 VERSION="${T3_SDLC_VERSION:-}"
