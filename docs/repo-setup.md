@@ -6,16 +6,16 @@ The factory runs any repo, or group of repos, that tells it three things: how to
 
 ```bash
 # In T3 (Claude or Codex thread), in your repo:
-/orchestrate-setup            # guided: doctor → fix → re-check
+"set up this repo for t3-sdlc"   # in a T3 thread: guided doctor → fix → re-check
 
 # Or from a shell:
-node <t3-sdlc>/factory/bin/orchestrate.js init .           # print a proposed contract
-node <t3-sdlc>/factory/bin/orchestrate.js init . --write   # write it
-node <t3-sdlc>/factory/bin/orchestrate.js doctor .         # what can run, what is missing
-node <t3-sdlc>/factory/bin/orchestrate.js doctor . --verify  # also run setup, checks, app.up
+t3-sdlc init .              # print a proposed contract
+t3-sdlc init . --write      # write it
+t3-sdlc doctor .            # what can run, what is missing
+t3-sdlc doctor . --verify   # also run setup, checks, app.up (in a scratch worktree)
 ```
 
-`/orchestrate` runs the same doctor before it starts. If something is missing it stops and shows you the report instead of starting a run.
+An orchestrate run starts with the same doctor. If something is missing it stops and shows you the report instead of starting a run.
 
 ## What each stage needs
 
@@ -28,7 +28,7 @@ node <t3-sdlc>/factory/bin/orchestrate.js doctor . --verify  # also run setup, c
 | Browser validation | `app`: a command that serves the app plus its URL | optional | user-facing slices are code-reviewed only, never exercised in a browser |
 | Publishing | a GitHub `origin` remote and `gh auth login` | optional | PRs are written to a dry-run plan instead |
 
-Optional stages ask before being skipped: `/orchestrate` shows the report, and you either set them up or continue without them.
+Optional stages ask before being skipped: the foreman shows the report, and you either set them up or continue without them.
 
 The doctor checks that commands **resolve**, without running them:
 - npm/pnpm/yarn/bun scripts exist in `package.json`
@@ -109,7 +109,7 @@ They are plain commands, so you can run them in CI too. Write your own the same 
 
 ## Several repos: `.orchestrate/workspace.json`
 
-Put this in the repo you run `/orchestrate` from (the **primary** repo):
+Put this in the repo you orchestrate from (the **primary** repo):
 
 ```json
 {

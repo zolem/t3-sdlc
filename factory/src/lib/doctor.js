@@ -5,6 +5,7 @@
 // the checks and app.up/down on the current HEAD.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { CONTRACT_FILE, WORKSPACE_FILE, readContract, readWorkspace, repoEnvVar } from './repoContract.js';
@@ -226,7 +227,8 @@ async function doctorRepo(repo, { verify, forStart, workspaceApp }) {
 }
 
 /**
- * Actually run setup, checks and app.up/down on HEAD.
+ * Actually run setup, checks and app.up/down on HEAD, in a throwaway detached
+ * worktree so setup (npm install and friends) never touches the user's checkout.
  * @param {{ name: string, root: string, primary: boolean }} repo @param {any} contract @param {any} appDef
  * @param {(c: Omit<Capability, 'repo' | 'stage'>) => void} add
  */
@@ -236,22 +238,31 @@ async function verifyRepo(repo, contract, appDef, add) {
     return;
   }
   const head = git(repo.root, ['rev-parse', 'HEAD']);
-  const res = await runChecks({ cwd: repo.root, base: head, contract });
-  const failed = res.checks.filter(c => !c.ok);
-  add({
-    id: 'verify-checks', level: 'required', status: failed.length ? 'failed' : 'ok',
-    detail: res.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.id} (${Math.round((c.ms || 0) / 1000)}s): ${String(c.summary).split('\n')[0]}`).join('\n'),
-    fix: failed.length ? `These must pass on your base commit, or every slice will fail too:\n${failed.map(c => `${c.id}: ${(c.output || c.summary).toString().slice(-800)}`).join('\n\n')}` : undefined,
-  });
-  if (appDef) {
-    const logFile = path.join(repo.root, '.git', 'orchestrate-doctor-app.log');
-    try {
-      const info = await app.up({ cwd: repo.root, app: appDef, logFile });
-      await app.down({ pid: info.pid, cwd: repo.root, app: appDef });
-      add({ id: 'verify-app', level: 'optional', status: 'ok', detail: `app came up at ${info.url} and was stopped` });
-    } catch (err) {
-      add({ id: 'verify-app', level: 'optional', skippable: true, status: 'failed', detail: err instanceof Error ? err.message.slice(0, 1500) : String(err), fix: 'Fix app.up so it serves the URL (see the log), or skip browser validation.' });
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `t3-sdlc-verify-${repo.name}-`));
+  const dir = path.join(scratch, repo.name);
+  git(repo.root, ['worktree', 'add', '--detach', dir, head]);
+  try {
+    const res = await runChecks({ cwd: dir, base: head, contract });
+    const failed = res.checks.filter(c => !c.ok);
+    add({
+      id: 'verify-checks', level: 'required', status: failed.length ? 'failed' : 'ok',
+      detail: res.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.id} (${Math.round((c.ms || 0) / 1000)}s): ${String(c.summary).split('\n')[0]}`).join('\n'),
+      fix: failed.length ? `These must pass on your base commit, or every slice will fail too:\n${failed.map(c => `${c.id}: ${(c.output || c.summary).toString().slice(-800)}`).join('\n\n')}` : undefined,
+    });
+    if (appDef) {
+      const logFile = path.join(scratch, 'app.log');
+      try {
+        const info = await app.up({ cwd: dir, app: appDef, logFile });
+        await app.down({ pid: info.pid, cwd: dir, app: appDef });
+        add({ id: 'verify-app', level: 'optional', status: 'ok', detail: `app came up at ${info.url} and was stopped` });
+      } catch (err) {
+        add({ id: 'verify-app', level: 'optional', skippable: true, status: 'failed', detail: err instanceof Error ? err.message.slice(0, 1500) : String(err), fix: 'Fix app.up so it serves the URL (see the log), or skip browser validation.' });
+      }
     }
+  } finally {
+    git(repo.root, ['worktree', 'remove', '--force', dir], { allowFail: true });
+    fs.rmSync(scratch, { recursive: true, force: true });
+    git(repo.root, ['worktree', 'prune'], { allowFail: true });
   }
 }
 

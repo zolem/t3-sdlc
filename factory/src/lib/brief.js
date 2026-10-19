@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CONTENT_ROOT, sha256 } from './store.js';
 import { contractFor, SEVERITIES } from './contracts.js';
+import { cliCommand } from './paths.js';
 
 /**
  * Split optional frontmatter (`mode: append|replace`, `version: x`).
@@ -198,7 +199,7 @@ export function composeBrief({ run, dispatch: d, home, signatures }) {
     ...(multi ? [`- This run spans repos: ${Object.values(run.repos).map((/** @type {any} */ r) => `\`${r.name}\`${r.primary ? ' (primary)' : ''} at ${r.root}`).join(', ')}`] : []),
     ...(slice ? [`- Slice ${slice.n}/${run.slices.length}: ${slice.title} — branch \`${slice.branch}\`, based on \`${slice.baseRef}\``] : []),
     `- Goal: ${contract.summary}`,
-    '- Pass `cwd: YOUR_CWD` on every factory `execute` call. Read run files with `factory.run.read({ runId, path })`; never write run artifacts into the repo unless your steps say so.',
+    `- Call the factory with \`${cliCommand()} exec - <<'JS' ... JS\` from YOUR_CWD (or pass \`--cwd YOUR_CWD\`). Read run files with \`factory.run.read({ runId, path })\`; never write run artifacts into the repo unless your steps say so.`,
     '',
     '## Inputs',
     ...(d.inputs.length ? d.inputs.map((/** @type {any} */ i) => `- \`${i.path}\` — ${i.note}`) : ['- (none beyond this brief)']),

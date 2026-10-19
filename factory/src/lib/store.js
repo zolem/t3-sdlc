@@ -1,15 +1,15 @@
 // @ts-check
-// Filesystem state shared by every factory process. Each harness spawns its own
-// factory over stdio, so all coordination goes through files under
-// ORCHESTRATE_HOME with atomic writes and a coarse per-run lock.
+// Filesystem state shared by every factory process. Every `t3-sdlc` call is its
+// own process, so all coordination goes through files under the t3-sdlc home
+// with atomic writes and a coarse per-run lock.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { APP_ROOT } from './paths.js';
 
 /** Org content (roles/, policy/). Overridable for tests and forks. */
-export const CONTENT_ROOT = process.env.ORCHESTRATE_CONTENT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+export const CONTENT_ROOT = APP_ROOT;
 
 /** @param {string} home */
 export function runsDir(home) {

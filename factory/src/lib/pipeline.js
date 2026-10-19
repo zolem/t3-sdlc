@@ -22,6 +22,7 @@
 import { resolveTargets } from './policy.js';
 import { contractFor, BLOCKING } from './contracts.js';
 import { now } from './store.js';
+import { cliCommand } from './paths.js';
 import { assignBranches, primaryRepo, slicesIn } from './workspace.js';
 
 export const DEFAULT_SETTINGS = {
@@ -83,15 +84,18 @@ function block(run, scope, info, env) {
  * @param {string} runId @param {string} id @param {string} role @param {string} mode
  */
 export function taskText(runId, id, role, mode) {
+  const cli = cliCommand();
   return [
     `You are the \`${role}\` agent (${mode} mode) for t3-sdlc run \`${runId}\`, dispatch \`${id}\`.`,
-    'Your full instructions are served by the `factory` MCP server, not by this message.',
-    '1. Run `pwd` and keep the result as YOUR_CWD.',
-    '2. Call the factory `execute` tool with `cwd` set to YOUR_CWD and code:',
-    `   async () => factory.roles.brief({ runId: "${runId}", dispatchId: "${id}" })`,
-    '3. Follow the returned brief exactly. Finish by calling factory.dispatch.report(...) as the brief describes. If the report is rejected, fix what it lists and report again.',
+    'Your full instructions come from the t3-sdlc CLI, not from this message.',
+    '1. Run `pwd` and keep the result as YOUR_CWD. Run every t3-sdlc command from there.',
+    '2. Get your brief by running exactly:',
+    `${cli} exec - <<'JS'`,
+    `async () => factory.roles.brief({ runId: "${runId}", dispatchId: "${id}" })`,
+    'JS',
+    `3. Follow the returned brief exactly. Every \`factory.<module>.<fn>()\` call it shows runs the same way, through \`${cli} exec\`. Finish by calling factory.dispatch.report(...) as the brief describes. If the report is rejected, fix what it lists and report again.`,
     '4. Reply with one line: DONE or BLOCKED, plus a short reason.',
-    'If the factory tools are unavailable, reply "FACTORY UNAVAILABLE" and stop.',
+    `If \`${cli}\` is missing or says it needs full access, reply "FACTORY UNAVAILABLE: <its message>" and stop.`,
   ].join('\n');
 }
 
@@ -552,7 +556,7 @@ export function actions(run, scope = FOREMAN) {
     projectRoot: run.repos[n].root,
     baseBranch: run.repos[n].baseBranch,
     title: `${run.title} · ${n}`,
-    message: `Use the orchestrate-repo skill ($orchestrate-repo in Codex, /orchestrate-repo in Claude Code) for run ${run.id}, repo ${n}. You are this repo's thread: run the skill's loop yourself in this thread. Never delegate the coordination to a child.`,
+    message: `You are the repo thread for t3-sdlc run ${run.id}, repo ${n}. Run \`${cliCommand()} skill orchestrate-repo\` and follow it yourself in this thread. Never delegate the coordination to a child.`,
     how: `Find the T3 project whose workspaceRoot is "${run.repos[n].root}" (t3_project_list). t3_thread_launch({ title, projectId, workspaceStrategy: { type: "worktree", baseRef: "${run.repos[n].baseBranch}", startFromOrigin: false }, message }). Then factory.orchestrator.launched({ runId, repo: "${n}", threadId }).`,
   })) : [];
   if (pending.length || launches.length || out.length) return [...out, ...launches, ...pending];

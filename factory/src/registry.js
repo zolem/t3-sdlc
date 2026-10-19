@@ -16,7 +16,7 @@
 /**
  * @typedef {object} CallContext
  * @property {string} cwd  working directory of the calling harness process
- * @property {string} home factory state root (ORCHESTRATE_HOME)
+ * @property {string} home factory state root (~/.t3-sdlc)
  * @property {Record<string, string>} [signatures] capability path → call signature, for briefs
  */
 

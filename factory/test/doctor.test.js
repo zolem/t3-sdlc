@@ -82,11 +82,14 @@ test('workspace: a repo path that does not exist blocks the run', async () => {
   assert.ok(res.capabilities.some((/** @type {any} */ c) => c.repo === 'api' && c.id === 'git' && c.status === 'missing'));
 });
 
-test('verify runs the checks on HEAD', async () => {
-  const dir = repo({ '.orchestrate/factory.json': JSON.stringify({ checks: [{ id: 'ok', run: 'true' }, { id: 'bad', run: 'echo nope; exit 1' }] }) });
+test('verify runs setup and checks on HEAD in a throwaway worktree, leaving the checkout clean', async () => {
+  const dir = repo({ '.orchestrate/factory.json': JSON.stringify({ setup: 'touch made-by-setup.lock', checks: [{ id: 'ok', run: 'test -f made-by-setup.lock' }, { id: 'bad', run: 'echo nope; exit 1' }] }) });
   const res = await doctor({ cwd: dir, verify: true });
   assert.equal(cap(res, 'verify-checks').status, 'failed');
+  assert.match(cap(res, 'verify-checks').detail, /✓ ok/);
   assert.match(cap(res, 'verify-checks').fix, /nope/);
+  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' }), '', 'setup ran elsewhere');
+  assert.equal(execFileSync('git', ['worktree', 'list'], { cwd: dir, encoding: 'utf8' }).trim().split('\n').length, 1, 'scratch worktree removed');
 });
 
 test('resolveCommand understands package managers, make, scripts and PATH', () => {

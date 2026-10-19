@@ -1,8 +1,7 @@
 ---
 name: generate-brief
-description: Interactive Q&A that turns a rough idea into a structured product brief for the orchestrate factory
+description: Interactive Q&A that turns a rough idea into a structured product brief for the t3-sdlc factory. Use when the user wants to write or shape a brief before orchestrating it.
 argument-hint: <topic>
-disable-model-invocation: true
 ---
 
 # Generate a product brief
@@ -37,4 +36,4 @@ Then output the brief in this shape and ask whether to run it:
 ## Open questions
 ```
 
-If the user agrees, tell them to run `/orchestrate` (Claude) or `$orchestrate` (Codex) with the brief, or with the Linear ticket id if the brief lives there.
+If the user agrees, run the orchestrate skill with the brief (or with the Linear ticket id, if the brief lives there).
