@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   release:
-    # Only the primary repo publishes releases; mirrors (SchoolAI/t3-sdlc) never do.
+    # Only the primary repo publishes releases; copies and forks never do.
     if: github.repository == 'zolem/t3-sdlc'
     runs-on: ubuntu-latest
     steps:

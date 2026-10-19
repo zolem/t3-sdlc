@@ -1,7 +1,5 @@
 # t3-sdlc
 
-> Primary repo: `zolem/t3-sdlc`. `SchoolAI/t3-sdlc` is the internal copy, updated only with releases that are ready to share. The old subagent-based `SchoolAI/orchestrate-sdlc` is archived.
-
 A T3 Code **factory**: tell any T3 thread "orchestrate ABC-123" (or a brief) in a repo and a full SDLC runs. Each step is delegated to the provider/model your policy picks, and the run stops for you twice: to approve the plan, and to approve the PR stack.
 
 ```
