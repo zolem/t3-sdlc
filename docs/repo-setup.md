@@ -142,7 +142,7 @@ Single-repo runs work the same way, with one repo thread.
 ## Teach the factory your conventions
 
 Two layers are optional and committed with the repo:
-- **Role overlays:** `.orchestrate/roles/<role>.md` is appended to that role's brief whenever the repo is involved. Start the file with `---\nmode: replace\n---` to replace the brief instead. `examples/schoolai/.orchestrate/roles/` shows an architect and context-curator overlay with stack rules and links to internal docs.
+- **Role overlays:** `.orchestrate/roles/<role>.md` is appended to that role's brief whenever the repo is involved. Start the file with `---\nmode: replace\n---` to replace the brief instead. `examples/acme/.orchestrate/` shows architect and context-curator overlays plus a repo `policy.json` for a made-up company.
 - **Routing:** `.orchestrate/policy.json` overrides which model runs a role for this repo, in the same shape as `policy/org.json`.
 
 ## Troubleshooting

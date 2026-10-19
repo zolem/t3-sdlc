@@ -92,7 +92,7 @@ Full reference: [docs/repo-setup.md](docs/repo-setup.md).
 | What | Where | Precedence |
 |---|---|---|
 | Which model does each role | `policy/org.json` → `~/.t3-sdlc/policy.json` → `<repo>/.orchestrate/policy.json` | later wins, per role |
-| How each role thinks | `roles/<role>.md` (generic) → `~/.t3-sdlc/roles/<role>.md` → `<repo>/.orchestrate/roles/<role>.md` (org/stack knowledge; see `examples/schoolai/`) | appends; frontmatter `mode: replace` replaces |
+| How each role thinks | `roles/<role>.md` (generic) → `~/.t3-sdlc/roles/<role>.md` → `<repo>/.orchestrate/roles/<role>.md` (org/stack knowledge; see `examples/acme/`) | appends; frontmatter `mode: replace` replaces |
 | Mechanics: inputs, steps, report schema | `factory/src/lib/brief.js`, `contracts.js` | code |
 
 Every dispatch records its model, the hash of the exact brief it received, its duration, any report rejections and its findings. These go to `~/.t3-sdlc/ledger.jsonl`. Use `factory.ledger.stats()` to see:
@@ -114,7 +114,7 @@ policy/org.json     org routing defaults
 roles/*.md          role briefs (prompts you iterate on)
 skills/             orchestrate (foreman), orchestrate-setup, generate-brief (linked); orchestrate-repo (served by `t3-sdlc skill`)
 docs/               repo-setup.md (contract reference), factory.schema.json
-examples/schoolai/  org-specific role overlays, as an example
+examples/acme/      a made-up org's role overlays and repo policy, to copy
 install.sh          release installer; scripts/pack.sh builds the release tarball
 app/                legacy walkthrough desktop app (reads the old .orchestrate/ layout)
 ```
