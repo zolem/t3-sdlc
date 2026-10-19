@@ -1,0 +1,10 @@
+{
+  "roles": {
+    "engineer": {
+      "targets": [
+        { "providerInstanceId": "codex", "model": "gpt-6.1-sol", "options": { "reasoningEffort": "high" } },
+        { "providerInstanceId": "claudeAgent", "model": "claude-opus-5-5", "options": { "effort": "high" } }
+      ]
+    }
+  }
+}

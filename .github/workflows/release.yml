@@ -1,0 +1,73 @@
+name: release
+
+# Bump "version" in package.json and merge to main: this tags v<version> and publishes a
+# GitHub release with t3-sdlc.tar.gz and install.sh. Merges without a bump do nothing.
+# Users install the latest with:
+#   curl -fsSL https://github.com/zolem/t3-sdlc/releases/latest/download/install.sh | sh
+#   (private repo: gh release download --repo zolem/t3-sdlc --pattern install.sh --output - | sh)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Only the primary repo publishes releases; copies and forks never do.
+    if: github.repository == 'zolem/t3-sdlc'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: version
+        run: |
+          v="v$(node -p "require('./package.json').version")"
+          echo "tag=$v" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "$v is already released; nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v7
+        if: steps.version.outputs.exists == 'false'
+        with:
+          node-version: '22'
+
+      - name: Test
+        if: steps.version.outputs.exists == 'false'
+        working-directory: factory
+        run: |
+          git config --global user.email ci@example.invalid
+          git config --global user.name ci
+          git config --global init.defaultBranch main
+          npm ci
+          npm test
+          npm run typecheck
+
+      - name: Pack
+        if: steps.version.outputs.exists == 'false'
+        run: sh scripts/pack.sh "${{ steps.version.outputs.tag }}"
+
+      - name: Publish release
+        if: steps.version.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: t3-sdlc ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            dist/t3-sdlc.tar.gz
+            dist/install.sh

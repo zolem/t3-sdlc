@@ -1,0 +1,23 @@
+{
+  "name": "@t3-sdlc/factory",
+  "version": "0.1.0",
+  "description": "The t3-sdlc factory CLI: roles, policy, run store, ledger, checks, Code Mode search/exec.",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "t3-sdlc": "bin/t3-sdlc.js",
+    "orchestrate": "bin/orchestrate.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}
