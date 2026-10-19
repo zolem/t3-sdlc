@@ -131,20 +131,21 @@
     "manual-tester": {
       "targets": [
         {
+          "providerInstanceId": "codex",
+          "model": "gpt-6-luna",
+          "options": {
+            "reasoningEffort": "medium"
+          }
+        },
+        {
           "providerInstanceId": "claudeAgent",
           "model": "claude-haiku-5-5",
           "options": {
             "effort": "medium"
           }
-        },
-        {
-          "providerInstanceId": "codex",
-          "model": "gpt-6-luna",
-          "options": {
-            "reasoningEffort": "low"
-          }
         }
-      ]
+      ],
+      "note": "OpenAI models are strongest at browser and computer use."
     },
     "reviewer": {
       "note": "Per-slice review. The factory skips any target in the same family as the slice author.",
