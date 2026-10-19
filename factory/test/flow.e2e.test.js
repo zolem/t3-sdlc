@@ -146,3 +146,18 @@ test('start: preflight blocks a dirty repo; an unroutable policy throws; threadI
   await assert.rejects(call('orchestrator.start', { repo, threadId: 'T', brief: 'x', capabilities: { providers: [CAPABILITIES.providers[0]] }, skip: SKIP }), /feature-reviewer/);
   void commit;
 });
+
+test('start: asks which policy targets are available, then routes from that short list with options intact', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-5-'));
+  const repo = path.join(tmp, 'r');
+  initRepo(repo, { '.orchestrate/factory.json': JSON.stringify(CONTRACT) });
+  const { call } = factory(tmp, repo);
+  const ask = await call('orchestrator.start', { repo, threadId: 'T', brief: 'x', skip: SKIP });
+  assert.equal(ask.actions[0].type, 'availability');
+  assert.ok(ask.actions[0].targets.includes('codex/gpt-6.1-sol'));
+  const available = ask.actions[0].targets.filter((/** @type {string} */ t) => t !== 'claudeAgent/claude-sonnet-5-5');
+  const run = await call('orchestrator.start', { repo, threadId: 'T', brief: 'x', skip: SKIP, available });
+  assert.deepEqual(run.unavailable, ['claudeAgent/claude-sonnet-5-5']);
+  assert.equal(run.routing['product-manager'], 'codex/gpt-6.1-sol', 'falls back past the unavailable target');
+  assert.deepEqual(run.actions[0].delegate.target.options, { reasoningEffort: 'high' }, 'policy options pass through');
+});

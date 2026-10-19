@@ -4,7 +4,7 @@
 
 import path from 'node:path';
 import { activeRepos, advance, decide, findDispatch, DEFAULT_SETTINGS, FOREMAN } from '../lib/pipeline.js';
-import { availabilityFrom, loadPolicy, resolveTargets } from '../lib/policy.js';
+import { availabilityFrom, availabilityFromList, loadPolicy, policyTargets, resolveTargets } from '../lib/policy.js';
 import { CONTRACTS } from '../lib/contracts.js';
 import { commonRoot, currentBranch, repoRoot, sha } from '../lib/git.js';
 import { createRunDir, ledger, listRuns, loadRun, mutateRun, readRunFile, runFileExists, writeRunFile } from '../lib/runs.js';
@@ -62,11 +62,10 @@ export default {
   description: 'Drive a run: start it, get the next actions, record dispatch lifecycle and human decisions. Orchestrator thread only.',
   functions: {
     start: {
-      signature: 'factory.orchestrator.start({ repo: string /* target repo path */, threadId: string /* your own T3 thread id: repo threads report to it */, brief?: string, ticket?: string /* e.g. "ABC-123" */, title?: string, capabilities: object /* full orchestrator_capabilities result */, skip?: ("browser-validation" | "publish")[] /* optional stages the user agreed to run without */, overrides?: { roles: Record<string, { targets: Target[] }> }, allowDirty?: boolean }): Promise<{ runId, routing, actions } | { preflight, actions: [{ type: "preflight" }] }>',
+      signature: 'factory.orchestrator.start({ repo: string /* target repo path */, threadId: string /* your own T3 thread id: repo threads report to it */, brief?: string, ticket?: string /* e.g. "ABC-123" */, title?: string, available?: string[] /* the policy targets orchestrator_capabilities lists, as "providerInstanceId/model" (start returns an availability action listing them) */, skip?: ("browser-validation" | "publish")[] /* optional stages the user agreed to run without */, overrides?: { roles: Record<string, { targets: Target[] }> }, allowDirty?: boolean }): Promise<{ runId, routing, unavailable, actions } | { preflight, actions: [{ type: "preflight" }] } | { actions: [{ type: "availability", targets }] }>',
       description: 'Preflight the repo (or workspace) with the doctor, then create a run from a prompt or Linear ticket, freeze the routing policy against live capabilities, and return the first actions. When something the flow needs is missing, returns a preflight action instead of starting.',
       tags: ['begin', 'new run', 'kickoff', 'ticket', 'linear'],
-      handler: async ({ repo, threadId, brief, ticket, title, capabilities, overrides, allowDirty, settings, skip }, ctx) => {
-        if (!capabilities?.providers) throw new Error('Pass the full result of the T3 orchestrator_capabilities tool as `capabilities`.');
+      handler: async ({ repo, threadId, brief, ticket, title, available, capabilities, overrides, allowDirty, settings, skip }, ctx) => {
         if (!threadId) throw new Error('Pass threadId: your own T3 thread id (t3_thread_list returns it as currentThreadId). Repo threads report to it.');
         const root = commonRoot(repoRoot(path.resolve(ctx.cwd, repo || '.')));
         const skipList = Array.isArray(skip) ? skip : [];
@@ -104,7 +103,20 @@ export default {
         const stamp = now().replace(/[-:T]/g, '').slice(0, 12);
         const id = `${slugify(runTitle.split(/\s+/).slice(0, 6).join(' '))}-${stamp}`;
         const { policy, sources } = loadPolicy({ home: ctx.home, repo: root, overrides });
-        const availability = availabilityFrom(capabilities);
+        const targets = policyTargets(policy);
+        if (!Array.isArray(available) && !capabilities?.providers) {
+          return {
+            started: false,
+            actions: [{
+              type: 'availability',
+              targets,
+              how: 'Check each target against your orchestrator_capabilities result: available when that providerInstanceId has canRunChildTask true and lists that model id. Call start again with the same arguments plus available: the targets that are available, copied exactly.',
+            }],
+          };
+        }
+        // `available` (a short list the orchestrator checked) is preferred: copying the whole capabilities payload by hand drops models and options.
+        const availability = Array.isArray(available) ? availabilityFromList(available) : availabilityFrom(capabilities);
+        const unavailable = targets.filter(t => !(availability.available[t.slice(0, t.indexOf('/'))] || []).includes(t.slice(t.indexOf('/') + 1)));
         /** @type {Record<string, any>} */
         const repos = {};
         for (const r of ws.repos) repos[r.name] = { name: r.name, root: r.root, primary: r.primary, baseBranch: currentBranch(r.root) || 'HEAD', baseSha: sha(r.root), contract: loadContract(r.root) };
@@ -129,9 +141,9 @@ export default {
         if (broken.length) throw new Error(`Policy cannot be satisfied with the providers available right now:\n${broken.map(([k, v]) => `- ${k}: ${v}`).join('\n')}`);
         createRunDir(ctx.home, run);
         writeRunFile(ctx.home, id, 'brief.md', briefText.trim() + '\n');
-        ledger(ctx.home, id, { event: 'run.started', title: runTitle, repo: root, repos: Object.keys(repos), capabilities: run.capabilities, intake, routing, policySources: sources.map(s => s.layer) });
+        ledger(ctx.home, id, { event: 'run.started', title: runTitle, repo: root, repos: Object.keys(repos), capabilities: run.capabilities, intake, routing, unavailable, policySources: sources.map(s => s.layer) });
         const first = step(ctx.home, id);
-        return { runId: id, title: runTitle, runFolder: path.join(runDir(ctx.home, id), 'files'), routing, ...first, help: ACTION_HELP };
+        return { runId: id, title: runTitle, runFolder: path.join(runDir(ctx.home, id), 'files'), routing, unavailable, ...first, help: ACTION_HELP };
       },
     },
     next: {

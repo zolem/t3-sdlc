@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Run the t3-sdlc factory for a ticket (e.g. "orchestrate ABC-123") or a product brief. This thread becomes the foreman — it plans with routed models, launches one T3 thread per repo to build, reviews across repos, and stops for plan and PR-stack approval. Use when the user asks to orchestrate, build or ship a ticket or brief with the factory, or to resume a factory run.
+description: ALWAYS use this skill when a message starts with "orchestrate" (e.g. "orchestrate ABC-123", "orchestrate: <brief>"), and never implement that request yourself. Runs the t3-sdlc factory for a ticket or product brief. This thread becomes the foreman — it plans with routed models, launches one T3 thread per repo to build, reviews across repos, and stops for plan and PR-stack approval. Also use when the user asks to build or ship a ticket or brief with the factory, or to resume a factory run.
 argument-hint: <ticket id like ABC-123, or a product brief>
 ---
 
@@ -27,11 +27,13 @@ You are the **foreman**. You do no SDLC work yourself: no reading code, writing 
    - Looks like a ticket id (e.g. `ABC-123`): pass `ticket`. If the factory says Linear is not configured and you have a Linear tool, fetch the issue yourself and pass its text as `brief`, plus `ticket`.
    - Otherwise pass the text as `brief`.
    - To resume (`resume <runId>`, or the user asks): skip `start`, call `factory.orchestrator.next({ runId })`. `factory.orchestrator.list()` shows runs.
-3. `factory.orchestrator.start({ repo: "<this checkout>", threadId: YOUR_THREAD_ID, brief, ticket, capabilities })`. Pass the full `orchestrator_capabilities` result as `capabilities` (write it into the heredoc as a JSON literal).
-   - If it returns a **preflight** action instead of a run, show `preflight.report` as-is.
+3. `factory.orchestrator.start({ repo: "<this checkout>", threadId: YOUR_THREAD_ID, brief, ticket })`. It answers with one of:
+   - A **preflight** action: show `preflight.report` as-is.
      - `blocking: true`: the run cannot start. Offer to set the repo up (`~/.t3-sdlc/bin/t3-sdlc skill orchestrate-setup`), then start again.
      - Otherwise only optional stages are missing. Ask the user: set them up first, or continue without them? To continue, start again with `skip: <needsDecision>`.
-4. Tell the user in 2-3 lines: run id, title, repos, any skipped stages, and the routing table.
+   - An **availability** action listing `targets` ("providerInstanceId/model"). Check each against your `orchestrator_capabilities` result: available when that provider has `canRunChildTask: true` and lists that model id. Start again with the same arguments plus `available: [<those targets, copied exactly>]`. Do not pass the capabilities payload itself.
+   - The run: `runId`, `routing`, `unavailable` and the first `actions`.
+4. Tell the user in 2-3 lines: run id, title, repos, any skipped stages, the routing table, and any `unavailable` targets.
 
 ## Loop: do exactly what `actions` says
 Every factory call returns `actions`. Handle all of them in order:
