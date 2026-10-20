@@ -529,6 +529,7 @@ function deskActions(run, out) {
     const p = primaryRepo(run);
     return [...out, {
       type: 'launch-driver',
+      repo: p.name,
       projectRoot: p.root,
       baseBranch: p.baseBranch,
       title: `${run.title} · run`,
@@ -574,7 +575,7 @@ export function actions(run, scope = FOREMAN) {
     if (run.blocked?.[scope]) return [...out, { type: 'idle', reason: `blocked: ${run.blocked[scope].reason}`, how: 'The foreman has been told and will ask the user. End your turn; you will be messaged when to continue.' }];
     if (pending.length) return [...out, ...pending];
     if (st.phase === 'checkout' && !running.length) {
-      return [...out, { type: 'checkout', repo: scope, how: `Point your own worktree at the finished ${scope} stack for whole-feature checks: factory.workspace.prepare({ runId: "${run.id}", repo: "${scope}", cwd: <your thread's checkout path> }), then call factory.orchestrator.next({ runId, repo: "${scope}" }).` }];
+      return [...out, { type: 'checkout', repo: scope, how: `Point your own worktree at the finished ${scope} stack for whole-feature checks: factory.workspace.prepare({ runId: "${run.id}", repo: "${scope}", cwd: <your thread's checkout path> }), then call factory.orchestrator.next again.` }];
     }
     if (running.length) return [...out, { type: 'wait', running: running.map((/** @type {any} */ d) => ({ dispatchId: d.id, taskId: d.taskId, title: d.title })) }];
     if (st.waitingOn?.length) return [...out, { type: 'idle', reason: `waiting on slice(s) ${st.waitingOn.join(', ')} in another repo`, how: 'End your turn; you will be messaged when the dependency is done.' }];
@@ -583,9 +584,9 @@ export function actions(run, scope = FOREMAN) {
 
   const blocked = Object.values(run.blocked || {});
   if (run.desk) {
-    // Things a person decides go to the user's thread; the run thread waits.
-    if (blocked.length) {
-      for (const b of blocked) tellDesk(run, `blocked:${b.scope}:${b.at}`, `Run ${run.id} is blocked (${b.scope}): ${b.reason}`);
+    // Things a person decides go to the user's thread; the run thread waits only on its own blocks.
+    for (const b of blocked) tellDesk(run, `blocked:${b.scope}:${b.at}`, `Run ${run.id} is blocked (${b.scope}): ${b.reason}`);
+    if (run.blocked?.[FOREMAN]) {
       return [...outboxFor(run, scope), { type: 'idle', reason: 'waiting for the user', how: 'End your turn. You will be messaged when the user decides.' }];
     }
     for (const gate of ['plan', 'stack']) {
@@ -600,7 +601,7 @@ export function actions(run, scope = FOREMAN) {
       return [...outboxFor(run, scope), { type: 'finished', how: 'The run is over. Settle your child threads that are still unsettled, reply with one line, and stop.' }];
     }
   }
-  if (blocked.length) {
+  if (blocked.length && !run.desk) {
     return [...out, ...blocked.map((/** @type {any} */ b) => {
       const options = b.kind === 'feature-rounds' ? ['accept', 'retry', 'abort'] : ['retry', 'abort'];
       const help = b.kind === 'feature-rounds' ? ' accept = continue to the PR stack with these findings shown as open; retry = one more fix round; abort = stop the run.' : '';
@@ -653,6 +654,8 @@ function decideInner(run, { gate, decision, notes, scope, repos }, env) {
     if (decision === 'abort') {
       run.status = 'aborted';
       run.cursor = 'done';
+      // The user's thread made this call and sees "done" from it; don't tell it again.
+      if (run.desk) (run.deskEvents ??= {}).done = now();
       run.blocked = {};
       for (const n of activeRepos(run)) {
         rstate(run, n).phase = 'done';

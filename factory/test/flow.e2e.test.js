@@ -171,6 +171,8 @@ test('a child that ends without a report is retried on the fallback model, then 
   assert.equal(first.actions[0].type, 'idle', 'the user\'s thread is done until something needs a person');
   const go = await call('orchestrator.next', { runId });
   assert.equal(go.actions.find((/** @type {any} */ a) => a.dispatchId === 'requirements').delegate.target.model, 'claude-sonnet-5-5');
+  const viaRepo = await call('orchestrator.next', { runId, repo: 'r' });
+  assert.deepEqual(viaRepo.scopes, ['foreman'], 'a repo the run thread drives answers with everything the run thread drives');
   await call('orchestrator.started', { runId, dispatchId: 'requirements', taskId: 'x1' });
   const retryOf = (/** @type {any} */ res) => res.actions.find((/** @type {any} */ a) => a.dispatchId?.startsWith('requirements'));
   let r = await call('orchestrator.finished', { runId, dispatchId: 'requirements', status: 'completed', summary: 'oops' });
@@ -220,3 +222,26 @@ test('start: asks which policy targets are available, then routes from that shor
   const go = await call('orchestrator.next', { runId: run.runId });
   assert.deepEqual(go.actions.find((/** @type {any} */ a) => a.dispatchId === 'requirements').delegate.target.options, { reasoningEffort: 'high' }, 'policy options pass through');
 });
+
+test('a run started before the run thread existed resumes with the user\'s thread as foreman', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-legacy-'));
+  const repo = path.join(tmp, 'r');
+  initRepo(repo, { '.orchestrate/factory.json': JSON.stringify(CONTRACT) });
+  const { call, home } = factory(tmp, repo);
+  const { runId } = await call('orchestrator.start', { repo, threadId: 'T', brief: 'Old run', capabilities: CAPABILITIES, skip: SKIP });
+  const file = path.join(home, 'runs', runId, 'run.json');
+  const old = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete old.desk;
+  old.foreman = { threadId: 'T' };
+  fs.writeFileSync(file, JSON.stringify(old));
+  const res = await call('orchestrator.next', { runId, scope: 'desk' });
+  assert.ok(res.actions.some((/** @type {any} */ a) => a.type === 'dispatch' && a.dispatchId === 'requirements'), 'the old foreman keeps orchestrating');
+});
+
+test('an engineer slice with no assigned test cases can report without a tests list', async () => {
+  const { validateReport } = await import('../src/lib/report.js');
+  const run = { repos: { r: { root: '/nope' } }, repo: { root: '/nope' }, slices: [{ n: 1, repo: 'r', branch: 'b', baseRef: 'main', testCases: [] }] };
+  const { errors } = validateReport({ run, dispatch: { role: 'engineer', mode: 'build', slice: 1, repo: 'r' }, report: { summary: 's', branch: 'b', headSha: 'x' }, files: { exists: () => false, read: () => '' } });
+  assert.ok(!errors.some(e => e.startsWith('tests must list')), errors.join('; '));
+});
+

@@ -84,7 +84,7 @@ export function validateReport({ run, dispatch, report, files }) {
       if (report.branch !== slice.branch) errors.push(`branch must be "${slice.branch}"`);
       const r = branchChecks(slice.branch, report.headSha, slice.baseRef, slice.repo);
       // The engineer decides what to automate; every assigned case needs a call, and automated ones must be in the tests.
-      const tests = Array.isArray(report.tests) ? report.tests : null;
+      const tests = Array.isArray(report.tests) ? report.tests : (slice.testCases || []).length ? null : [];
       if (!tests) errors.push(`tests must list every assigned test case (${(slice.testCases || []).join(', ') || 'none'}) as { id, automated: true, where } or { id, automated: false, why }`);
       else {
         const given = new Set(tests.map((/** @type {any} */ t) => t?.id));

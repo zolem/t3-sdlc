@@ -35,7 +35,14 @@ function step(home, runId, scope = FOREMAN) {
   });
   // The user's thread opens pages by link rather than pasting them through a model.
   for (const a of res.actions) {
-    if (a.type === 'gate') a.url = `${runFilesUrl(home, runId)}/${a.htmlPath}`;
+    if (a.type !== 'gate') continue;
+    let base;
+    try {
+      base = runFilesUrl(home, runId);
+    } catch {
+      base = `file://${path.join(runDir(home, runId), 'files')}`;
+    }
+    a.url = `${base}/${a.htmlPath}`;
   }
   return res;
 }
@@ -116,7 +123,7 @@ function costSection(home, run) {
 }
 
 const ACTION_HELP = `You are the user's thread: you start the run and then only handle what a person decides.
-- launch-driver: start the run thread as action.how says, then factory.orchestrator.launched({ runId, repo, threadId, driver: true }). Tell the user the run started (one line, with a link to the run thread), and end your turn.
+- launch-driver: start the run thread as action.how says, then factory.orchestrator.launched({ runId, repo: action.repo, threadId, driver: true }). Tell the user the run started (one line, with a link to the run thread), and end your turn.
 - notify: t3_thread_send the message to action.threadId, then factory.orchestrator.sent({ runId, id }).
 - gate / blocked / done / idle: follow action.how.`;
 
@@ -218,9 +225,14 @@ export default {
       description: "Advance the pipeline and return the actions for your thread: the user's thread (scope \"desk\"), the run thread (no repo: foreman plus the repos it drives), or another repo's thread. Safe to call any time (idempotent).",
       tags: ['continue', 'resume', 'advance'],
       handler: ({ runId, repo, scope }, ctx) => {
+        const run = loadRun(ctx.home, runId);
+        // Runs started before the run thread existed: the user's thread is the foreman.
+        if (!run.desk) return step(ctx.home, runId, repo || FOREMAN);
         if (scope === DESK) return step(ctx.home, runId, DESK);
-        if (repo) return step(ctx.home, runId, repo);
-        return loadRun(ctx.home, runId).foreman?.threadId ? drive(ctx.home, runId) : step(ctx.home, runId, FOREMAN);
+        const driver = run.foreman?.threadId;
+        // The run thread drives the primary repo too; any call it makes gets everything it drives.
+        if (driver && (!repo || threadOf(run, repo) === driver)) return drive(ctx.home, runId);
+        return step(ctx.home, runId, repo || FOREMAN);
       },
     },
     launched: {
@@ -236,7 +248,8 @@ export default {
           for (const m of run.outbox || []) if ((m.to === repo || (driver && m.to === FOREMAN)) && !m.sent) m.sent = true;
         });
         ledger(ctx.home, runId, { event: driver ? 'run.thread' : 'repo.launched', repo, threadId });
-        return step(ctx.home, runId, driver ? DESK : FOREMAN);
+        if (driver) return step(ctx.home, runId, DESK);
+        return loadRun(ctx.home, runId).foreman?.threadId && loadRun(ctx.home, runId).desk ? drive(ctx.home, runId) : step(ctx.home, runId, FOREMAN);
       },
     },
     sent: {
@@ -293,7 +306,7 @@ export default {
       handler: ({ runId, gate, decision, notes, scope, repos }, ctx) => {
         mutateRun(ctx.home, runId, run => decide(run, { gate, decision, notes, scope, repos }, envFor(ctx.home, runId)));
         // The decision wakes the run thread; the user's thread sends that message.
-        return step(ctx.home, runId, DESK);
+        return step(ctx.home, runId, loadRun(ctx.home, runId).desk ? DESK : FOREMAN);
       },
     },
     status: {
