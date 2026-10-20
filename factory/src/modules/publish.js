@@ -62,9 +62,6 @@ function prBody(run, stack, i, home, others) {
     const c = JSON.parse(readRunFile(home, run.id, `checks/${it.s.headSha}.json`));
     lines.push('', '### Deterministic checks', '| Check | Result |', '|---|---|', ...c.checks.map((/** @type {any} */ x) => `| ${x.id} | ${x.ok ? '✅' : '❌'} ${String(x.summary).split('\n')[0]} |`));
   }
-  if (it.s?.lastVerify) {
-    lines.push('', '### Review', `Built by \`${it.s.author?.model || 'unknown'}\`; reviewed by a different model family. Round ${it.s.lastVerify.round}: ${it.s.lastVerify.blocking} blocking, ${it.s.lastVerify.minor} minor.`);
-  }
   const docsRepo = run.docs?.repo ? run.repos[run.docs.repo] : null;
   const docsGh = docsRepo ? githubRepo(docsRepo.root) : null;
   if (docsGh && run.docs?.headSha && run.docs.docPath) {

@@ -29,7 +29,7 @@ export default {
     },
     prepare: {
       signature: 'factory.workspace.prepare({ runId: string, repo: string, cwd: string /* the repo thread\'s own worktree */ }): Promise<{ path, ref, sha }>',
-      description: "Repo threads only. Points the thread's own (clean) worktree at the repo's finished stack so whole-feature review and validation run against it, then tells the foreman this milestone is done.",
+      description: "Repo threads only. Points the thread's own worktree at the repo's finished stack (discarding uncommitted leftovers) so whole-feature review and validation run against it, then tells the foreman this milestone is done.",
       tags: ['checkout', 'milestone'],
       handler: ({ runId, repo, cwd }, ctx) => {
         const dir = cwd || ctx.cwd;
@@ -37,8 +37,14 @@ export default {
         const run = loadRun(ctx.home, runId);
         const own = repoForCwd(run, dir);
         if (!own || own.name !== repo) throw new Error(`${dir} is not a worktree of repo "${repo}"`);
+        // The worktree belongs to the run; leftovers from a crashed step or from checks
+        // that write untracked files are discarded (committed work lives on branches).
         const dirty = dirtyPaths(dir);
-        if (dirty.length) throw new Error(`Your worktree has uncommitted changes (${dirty.slice(0, 5).join(', ')}); it must stay clean.`);
+        if (dirty.length) {
+          git(dir, ['reset', '--hard']);
+          git(dir, ['clean', '-fd']);
+          ledger(ctx.home, runId, { event: 'workspace.cleaned', repo, path: dir, paths: dirty.slice(0, 20) });
+        }
         const ref = topRef(run, repo);
         git(dir, ['switch', '--detach', ref]);
         const sha = git(dir, ['rev-parse', 'HEAD']);

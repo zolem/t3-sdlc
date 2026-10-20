@@ -24,7 +24,7 @@ export default {
     },
     stats: {
       signature: 'factory.ledger.stats({ since?: string /* ISO date */, role?: string }): Promise<{ dispatches: object[], slices: object[], reviewers: object[] }>',
-      description: 'Aggregates for choosing models: success rate, minutes, report rejections, first-pass slice quality per author, reviewer precision (share of findings the other family confirmed).',
+      description: 'Aggregates for choosing models: success rate, minutes, report rejections, report rejections, and findings raised per feature reviewer.',
       tags: ['eval', 'metrics', 'quality', 'model choice'],
       handler: ({ since, role }, ctx) => {
         const rows = readJsonl(path.join(ctx.home, 'ledger.jsonl')).filter(e => !since || e.ts >= since);
@@ -46,27 +46,24 @@ export default {
         /** @type {Record<string, any>} */
         const slices = {};
         for (const e of rows) {
-          if (e.event !== 'slice.verified' || e.round !== 1) continue;
+          if (e.event !== 'slice.built') continue;
           const m = e.author?.model || 'unknown';
-          const s = (slices[m] ??= { author: m, slices: 0, cleanFirstPass: 0, blocking: [] });
+          const s = (slices[m] ??= { author: m, slices: 0 });
           s.slices++;
-          if (e.blocking === 0) s.cleanFirstPass++;
-          s.blocking.push(e.blocking);
         }
         /** @type {Record<string, any>} */
         const reviewers = {};
         for (const e of rows) {
           if (e.event !== 'feature.reviewer.score') continue;
-          const r = (reviewers[e.model] ??= { model: e.model, rounds: 0, raised: 0, confirmed: 0, blockingRaised: 0 });
+          const r = (reviewers[e.model] ??= { model: e.model, rounds: 0, raised: 0, blockingRaised: 0 });
           r.rounds++;
           r.raised += e.raised;
-          r.confirmed += e.confirmed;
           r.blockingRaised += e.blockingRaised;
         }
         return {
           dispatches,
-          slices: Object.values(slices).map(s => ({ author: s.author, slices: s.slices, cleanFirstPassPct: Math.round((s.cleanFirstPass / s.slices) * 100), avgBlockingFirstReview: avg(s.blocking) })),
-          reviewers: Object.values(reviewers).map(r => ({ ...r, precisionPct: r.raised ? Math.round((r.confirmed / r.raised) * 100) : null })),
+          slices: Object.values(slices),
+          reviewers: Object.values(reviewers),
         };
       },
     },

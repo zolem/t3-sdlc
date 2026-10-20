@@ -61,7 +61,7 @@ The doctor checks that commands **resolve**, without running them:
     "ready": "/health",
     "readyTimeoutSec": 60
   },
-  "docs": { "dir": "docs/features" }
+  "docs": { "enabled": true, "dir": "docs/features" }
 }
 ```
 
@@ -72,6 +72,7 @@ The doctor checks that commands **resolve**, without running them:
 | `app.up` | Starts the app and keeps running. The factory picks a free port, fills `{port}` in `up`, `url` and `env`, starts the command in the background, and polls `url + ready` until it answers. |
 | `app.url` / `app.urlPattern` | Use `url` when the URL is known. Use `urlPattern` (a regex with one capture group, matched against the command's output) when the command prints it, for example a remote preview. |
 | `app.down` | Optional teardown command. The process group is always killed. |
+| `docs.enabled` | Write a versioned feature doc as the top PR of the stack. Off unless `true`. |
 | `docs.dir` | Where the docs writer puts the feature doc. Default `docs/features`. |
 
 ### Environment every check gets

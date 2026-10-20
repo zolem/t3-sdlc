@@ -36,7 +36,8 @@
             "effort": "medium"
           }
         }
-      ]
+      ],
+      "note": "Works from the brief, alongside the product manager."
     },
     "architect": {
       "targets": [
@@ -108,7 +109,8 @@
             "reasoningEffort": "medium"
           }
         }
-      ]
+      ],
+      "note": "Fills the factory's explainer template (JSON + Mermaid); a fast model is enough."
     },
     "engineer": {
       "targets": [
@@ -131,43 +133,25 @@
     "manual-tester": {
       "targets": [
         {
+          "providerInstanceId": "codex",
+          "model": "gpt-6-luna",
+          "options": {
+            "reasoningEffort": "medium"
+          }
+        },
+        {
           "providerInstanceId": "claudeAgent",
           "model": "claude-haiku-5-5",
           "options": {
             "effort": "medium"
           }
-        },
-        {
-          "providerInstanceId": "codex",
-          "model": "gpt-6-luna",
-          "options": {
-            "reasoningEffort": "low"
-          }
         }
-      ]
-    },
-    "reviewer": {
-      "note": "Per-slice review. The factory skips any target in the same family as the slice author.",
-      "targets": [
-        {
-          "providerInstanceId": "codex",
-          "model": "gpt-6.1-sol",
-          "options": {
-            "reasoningEffort": "high"
-          }
-        },
-        {
-          "providerInstanceId": "claudeAgent",
-          "model": "claude-opus-5-5",
-          "options": {
-            "effort": "high"
-          }
-        }
-      ]
+      ],
+      "note": "OpenAI models are strongest at browser and computer use."
     },
     "feature-reviewer": {
       "panel": 2,
-      "note": "Adversarial panel: the first two targets from distinct families review independently, then cross-examine each other.",
+      "note": "The only code review: the first two targets from distinct families review the whole feature independently, then each re-checks its own blocking findings after the fix round.",
       "targets": [
         {
           "providerInstanceId": "claudeAgent",
@@ -215,7 +199,8 @@
             "reasoningEffort": "medium"
           }
         }
-      ]
+      ],
+      "note": "Only runs when docs are enabled (primary repo factory.json \"docs\": { \"enabled\": true }, or run settings.docs)."
     }
   }
 }

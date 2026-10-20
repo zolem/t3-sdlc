@@ -3,6 +3,7 @@
 // returned to the child as errors so it keeps working instead of ending early.
 
 import { contractFor, findingErrors, sliceErrors, testCaseIds } from './contracts.js';
+import { explainerErrors } from './explainer.js';
 import { checkedOutBranches, git, tryRef } from './git.js';
 
 /**
@@ -66,18 +67,21 @@ export function validateReport({ run, dispatch, report, files }) {
     case 'explainer:stack': {
       const out = contract.outputs?.[0];
       if (out && files.exists(out)) {
-        const html = files.read(out);
-        if (!/<(html|body|main|section|div)\b/i.test(html)) errors.push(`${out} does not look like an HTML document`);
-        if (html.length > 480_000) errors.push(`${out} is ${html.length} bytes; keep it under 480 KB (link screenshots by run path instead of base64-inlining many)`);
+        let doc;
+        try {
+          doc = JSON.parse(files.read(out));
+        } catch (err) {
+          errors.push(`${out} is not valid JSON: ${err instanceof Error ? err.message : err}`);
+          break;
+        }
+        errors.push(...explainerErrors(dispatch.mode, doc, { run, exists: files.exists, read: files.read, list: () => [], abs: rel => rel }).map(e => `${out}: ${e}`));
       }
       break;
     }
-    case 'engineer:build':
-    case 'engineer:fix': {
+    case 'engineer:build': {
       if (!slice) break;
       if (report.branch !== slice.branch) errors.push(`branch must be "${slice.branch}"`);
       const r = branchChecks(slice.branch, report.headSha, slice.baseRef, slice.repo);
-      if (dispatch.mode === 'fix' && !Array.isArray(report.addressed)) errors.push('addressed must list { id, how } for every blocking finding');
       if (r && errors.length === 0) {
         effects.push(run2 => {
           const s = run2.slices.find((/** @type {any} */ x) => x.n === slice.n);
@@ -89,6 +93,10 @@ export function validateReport({ run, dispatch, report, files }) {
     }
     case 'engineer:feature-fix': {
       if (!Array.isArray(report.addressed)) errors.push('addressed must list { id, slice, how } for every blocking finding');
+      else {
+        const own = run.slices.filter((/** @type {any} */ x) => x.repo === dispatch.repo).map((/** @type {any} */ x) => x.n);
+        for (const a of report.addressed) if (!own.includes(Number(a?.slice)) && a?.slice !== 'docs') errors.push(`addressed ${a?.id}: slice must be the number of the ${dispatch.repo} slice the fix landed in (or would have, if no change was needed): one of ${own.join(', ')}`);
+      }
       const heads = [];
       for (const s of run.slices.filter((/** @type {any} */ x) => x.repo === dispatch.repo)) {
         const r = branchChecks(s.branch, '', s.baseRef, s.repo);
@@ -122,30 +130,22 @@ export function validateReport({ run, dispatch, report, files }) {
       }
       break;
     }
-    case 'manual-tester:slice':
     case 'manual-tester:feature': {
       errors.push(...findingErrors(report.findings));
       if (!Array.isArray(report.screenshots) || report.screenshots.length === 0) errors.push('screenshots must list at least one run path saved with factory.run.attach (evidence for reviewers and the PR)');
       else for (const p of report.screenshots) if (!files.exists(p)) errors.push(`screenshot "${p}" is not in the run folder; save it with factory.run.attach({ runId, from: screenshotPath, as: "screenshots/<name>.png" })`);
       break;
     }
-    case 'reviewer:slice':
     case 'feature-reviewer:review':
       errors.push(...findingErrors(report.findings));
       break;
-    case 'feature-reviewer:crossexam': {
-      errors.push(...findingErrors(report.findings || []));
-      const other = run.dispatches.find((/** @type {any} */ d) => d.id === dispatch.extra.otherDispatchId);
-      const ids = (other?.report?.findings || []).map((/** @type {any} */ f) => f.id);
-      const responses = Array.isArray(report.responses) ? report.responses : [];
-      if (!Array.isArray(report.responses)) errors.push('responses must be an array of { findingId, stance, reason }');
-      const answered = new Set(responses.map((/** @type {any} */ r) => r.findingId));
-      const missing = ids.filter((/** @type {string} */ id) => !answered.has(id));
-      if (missing.length) errors.push(`Respond to every finding of the other reviewer; missing: ${missing.join(', ')}`);
-      for (const r of responses) {
-        if (!['confirm', 'dispute'].includes(r.stance)) errors.push(`responses for ${r.findingId}: stance must be "confirm" or "dispute"`);
-        if (!r.reason) errors.push(`responses for ${r.findingId}: reason is required`);
-      }
+    case 'feature-reviewer:recheck': {
+      errors.push(...findingErrors(report.findings));
+      if (!Array.isArray(report.resolved)) errors.push('resolved must be an array of finding ids (use [] when none are resolved)');
+      const open = files.exists(dispatch.extra.recheckFile) ? JSON.parse(files.read(dispatch.extra.recheckFile)).findings.map((/** @type {any} */ f) => f.id) : [];
+      const answered = new Set([...(Array.isArray(report.resolved) ? report.resolved : []), ...(Array.isArray(report.findings) ? report.findings.map((/** @type {any} */ f) => f.id) : [])]);
+      const missing = open.filter((/** @type {string} */ id) => !answered.has(id));
+      if (missing.length) errors.push(`Account for every finding you are re-checking, in resolved or findings; missing: ${missing.join(', ')}`);
       break;
     }
     default:

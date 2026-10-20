@@ -4,9 +4,9 @@ A T3 Code **factory**: tell any T3 thread "orchestrate ABC-123" (or a brief) in 
 
 ```
 You ──orchestrate──▶  foreman thread ── plans, gates, cross-repo review, publish
-                         │ launches one T3 thread per repo (each in its own worktree)
+                         │ launches one T3 thread per repo (one worktree per repo)
                          ▼
-                 repo threads ── build · verify · fix · docs for their repo
+                 repo threads ── build · fix · docs for their repo
                          │ delegate_task(target = policy.resolve(role))
                          ▼
         child agents (Opus / Sol / Sonnet / Luna / Haiku …) ──▶ t3-sdlc CLI (search + exec)
@@ -16,19 +16,17 @@ You ──orchestrate──▶  foreman thread ── plans, gates, cross-repo r
 
 ## How a run flows
 
-1. **Plan:** product-manager → context-curator → architect ∥ qa-analyst → slice-planner → explainer.
-2. **Gate 1:** you approve the plan or request changes. The plan is shown as an HTML page in the thread: plain language first, with an engineer section underneath.
-3. **Build, in one thread per repo:** the foreman launches a T3 thread for each repo. Each slice is one stacked PR, built in dependency order (table → endpoint → UI), even across repos. Every job gets its own worktree:
-   - The engineer implements the slice.
-   - `checks.run` must pass. Engineers cannot report done without it.
-   - A reviewer from a **different model family** reviews it.
-   - A manual tester drives the real app in T3's browser when the slice is user-facing.
-   - Fixes loop until clean, up to 3 times.
-4. **Feature review:** two reviewers from different families (Opus and Sol by default) review the whole stack independently, then cross-examine each other.
-   - Findings both agree on are fixed, then the stack is restacked.
-   - Disputed findings come to you.
-5. **Docs:** a versioned feature doc (summary, diagrams, screenshots) becomes the top slice.
-6. **Gate 2:** you review the PR stack walkthrough, then approve or request changes.
+1. **Plan:** product-manager ∥ context-curator → architect ∥ qa-analyst → slice-planner → explainer.
+2. **Gate 1:** you approve the plan or request changes. The plan is shown as an HTML page in the thread: before/after sequence and flow diagrams of how the system changes, the slices in order with what to verify in each, and every test with why it exists (never test code). The explainer only writes the judgment calls and Mermaid; the factory renders the diagrams offline and fills in everything it already knows.
+3. **Build, in one thread per repo:** the foreman launches a T3 thread for each repo, in one worktree that every step for that repo shares, one at a time. Each slice is one stacked PR, built in dependency order (table → endpoint → UI), even across repos.
+   - The engineer implements the slice and self-reviews it against the spec.
+   - `checks.run` (lint, types, tests…) must pass. Engineers cannot report done without it. There is no per-slice review.
+4. **Feature review, once:** two reviewers from different families (Opus and Sol by default) review the whole stack independently while a manual tester walks every user story in T3's browser.
+   - Blocking findings are fixed in the slice they belong to, then the stack is restacked.
+   - Each reviewer re-checks only its own findings against what changed. The browser walk re-runs only if a fix touched a UI slice or validation had failed.
+   - Still blocked after the fix round (`maxFeatureFixRounds`, default 1)? You choose: accept and continue with the findings shown as open, one more round, or abort.
+5. **Docs (opt-in):** with `"docs": { "enabled": true }` in the primary repo's `.orchestrate/factory.json`, a versioned feature doc (summary, diagrams, screenshots) becomes the top slice.
+6. **Gate 2:** you review the PR stack page (same template: risk, checks and review status, before/after diagrams, what to verify per PR, fixes made after review, screenshots, tests), then approve or request changes.
 7. **Publish:** draft PRs, one per slice, each based on the one before in its repo. With several repos, each repo gets its own stack and the stacks are cross-linked. PRs are linked to your T3 thread.
 
 The order, retries, fallbacks and gates live in code (`factory/src/lib/pipeline.js`), not in a prompt. The orchestrator only carries out the actions the factory returns.
@@ -95,8 +93,8 @@ Full reference: [docs/repo-setup.md](docs/repo-setup.md).
 
 Every dispatch records its model, the hash of the exact brief it received, its duration, any report rejections and its findings. These go to `~/.t3-sdlc/ledger.jsonl`. Use `factory.ledger.stats()` to see:
 - success rate and minutes per role and model
-- clean first-pass rate per engineer model
-- reviewer precision: the share of each model's findings that the other family confirmed
+- slices built per engineer model
+- findings raised (and how many blocking) per feature reviewer model
 
 Use these numbers to adjust `policy/org.json` and the role briefs.
 

@@ -59,80 +59,68 @@ function steps(run, d) {
   const multi = Object.keys(run.repos || {}).length > 1;
   const docsDir = contract.docs?.dir || 'docs/features';
   const setup = contract.setup ? `If dependencies are missing, run \`${contract.setup}\` (checks also do this automatically).` : '';
+  const shared = `YOUR_CWD is this repo's run worktree. Every step of the run for \`${repo.name}\` works in it, one at a time, so start from and leave behind a clean tree. The worktree belongs to the run alone, so if \`git status --porcelain\` is not empty when you start, an earlier step crashed mid-way: discard its leftovers with \`git reset --hard && git clean -fd && git switch --detach\` and continue (committed work on slice branches is safe).`;
   const report = (/** @type {string} */ extra) => `Report: \`await factory.dispatch.report({ runId: "${run.id}", dispatchId: "${d.id}", summary${extra} })\`. If it returns errors, fix them and report again.`;
 
   switch (`${d.role}:${d.mode}`) {
     case 'engineer:build':
       return [
-        `Your checkout (YOUR_CWD) is a fresh worktree of ${repo.root}. \`git status\` should be clean.`,
+        shared,
         `Create the slice branch: \`git switch -c ${slice.branch} ${d.extra.baseRef}\` (if it already exists from an earlier attempt: \`git switch ${slice.branch}\`). ${setup}`,
         'Implement only this slice. Make small atomic commits, one per logical change, each leaving the build green. End every commit message with a `Slice: ' + slice.n + '` trailer.',
-        `Write the tests the spec asks for. Tag each test name with its test-case id (${(slice.testCases || []).join(', ') || 'see the spec'}).${slice.manualCases?.length ? ` These are verified in a browser by the manual tester, so make them work but do not fake tests for them: ${slice.manualCases.join(', ')}.` : ''}`,
+        `Write the tests the spec asks for. Tag each test name with its test-case id (${(slice.testCases || []).join(', ') || 'see the spec'}).${slice.manualCases?.length ? ` These are verified in a browser by the manual tester once the whole feature is built, so make them work but do not fake tests for them: ${slice.manualCases.join(', ')}.` : ''}`,
+        'Nobody reviews this slice on its own: the whole feature is reviewed once it is built, and the repo\'s checks are your gate. Before you commit, re-read your diff against the spec as a reviewer would (missed acceptance criteria, edge cases, error handling, leftover debug code).',
         `Run the deterministic gate: \`await factory.checks.run({ runId: "${run.id}", dispatchId: "${d.id}", cwd: YOUR_CWD })\`. Fix every failure and re-run until ok is true. Results are tied to the HEAD commit, so re-run after any new commit.`,
-        'Release the branch for later steps: `git switch --detach`.',
+        'Release the branch for the next step: `git switch --detach`, and leave the tree clean.',
         report(`, branch: "${slice.branch}", headSha: "<git rev-parse ${slice.branch}>"`),
-      ];
-    case 'engineer:fix':
-      return [
-        `In YOUR_CWD (a fresh worktree): \`git switch ${slice.branch}\`. ${setup}`,
-        'Read the findings input. Fix every blocking finding (critical/high/medium); fix minor ones when cheap and safe. Do not rewrite history: add new commits with a `Slice: ' + slice.n + '` trailer.',
-        'If you believe a finding is wrong, do not silently skip it: explain in `addressed[].how` why no change is needed.',
-        `Run \`await factory.checks.run({ runId: "${run.id}", dispatchId: "${d.id}", cwd: YOUR_CWD })\` until ok.`,
-        'Release the branch: `git switch --detach`.',
-        report(`, branch: "${slice.branch}", headSha: "<sha>", addressed: [{ id, how }]`),
       ];
     case 'engineer:feature-fix':
       return [
+        shared,
         `Your repo \`${repo.name}\` has this stack of branches: ${run.slices.filter((/** @type {any} */ s) => s.repo === repo.name).map((/** @type {any} */ s) => `${s.n}) ${s.branch}`).join(', ')}${run.docs?.headSha && run.docs.repo === repo.name ? `, then ${run.docs.branch}` : ''}. Each builds on the previous one.${multi ? ' Findings for other repos are handled by their own threads; fix only what is in your input.' : ''}`,
-        'For each finding, fix it in the LOWEST slice it belongs to: `git switch <that branch>`, commit the fix (trailer `Slice: N`), then `git switch --detach`.',
+        'For each finding, fix it in the LOWEST slice it belongs to: `git switch <that branch>`, commit the fix (trailer `Slice: N`), then `git switch --detach`. If you believe a finding is wrong, change nothing for it and say why in `addressed[].how`; the reviewer who raised it re-checks your reason.',
         `After committing to slice N, restack everything above it: \`await factory.git.restack({ runId: "${run.id}", fromSlice: N, cwd: YOUR_CWD })\`. If it reports a conflict, resolve it, \`git add\` + \`git rebase --continue\`, and call restack again with the same fromSlice.`,
         `Run checks on every slice you touched or that was restacked: \`await factory.checks.run({ runId: "${run.id}", dispatchId: "${d.id}", slice: N, cwd: YOUR_CWD })\` (it checks out that slice head for you; use slice: "docs" for the docs branch). All must pass.`,
         'Leave YOUR_CWD detached (`git switch --detach`).',
         report(', addressed: [{ id, slice, how }]'),
       ];
-    case 'manual-tester:slice':
-    case 'manual-tester:feature':
+    case 'manual-tester:feature': {
+      const manual = run.slices.flatMap((/** @type {any} */ x) => x.manualCases || []);
       return [
-        ...(d.mode === 'slice'
-          ? [`In YOUR_CWD (a fresh worktree): \`git switch --detach ${d.extra.branch}\`. ${setup}`, `Start the app: \`const app = await factory.app.up({ runId: "${run.id}", dispatchId: "${d.id}", cwd: YOUR_CWD })\` → { url, logFile }.`]
-          : [`Start the whole system: \`const app = await factory.app.up({ runId: "${run.id}", dispatchId: "${d.id}" })\` → { url, logFile }. It serves every repo from its finished stack (each repo thread prepared its checkout); do not edit or switch anything.`]),
+        `Start the whole system: \`const app = await factory.app.up({ runId: "${run.id}", dispatchId: "${d.id}" })\` → { url, logFile }. It serves every repo from its finished stack (each repo thread prepared its checkout); do not edit or switch anything.`,
         'Drive a real browser with the T3 preview tools (preview_open with open=false and reuseExistingTab=false, then preview_snapshot / preview_click / preview_type / preview_press / preview_wait_for). Keep using the tabId preview_open returns.',
-        `Walk ${d.mode === 'slice' ? `every acceptance criterion and test case in this slice spec${slice?.manualCases?.length ? `, and above all the browser-only cases nobody else checks: ${slice.manualCases.join(', ')}` : ''}` : 'every user story and test case end to end'}, including the edge cases a real user would hit (empty, too long, double submit, refresh, back button, slow network if relevant).`,
-        `Capture evidence: \`preview_snapshot\` with save=true gives a screenshotPath; copy it into the run with \`await factory.run.attach({ runId: "${run.id}", from: screenshotPath, as: "screenshots/${d.id}/<step>.png" })\`. Take one per meaningful state (before, after, error).`,
-        `Stop the app when done: \`await factory.app.down({ runId: "${run.id}", dispatchId: "${d.id}", cwd: YOUR_CWD })\`.`,
+        d.inputs.some((/** @type {any} */ i) => i.path.startsWith('reviews/'))
+          ? 'This is a re-check after fixes: first confirm each validation finding in the last round is fixed (report the ones that are not, keeping their ids), then re-walk the main flows the fixes touched. Do not repeat the whole walk.'
+          : `Walk every user story and test case end to end${manual.length ? `, and above all the browser-only cases nobody else checks: ${manual.join(', ')}` : ''}, including the edge cases a real user would hit (empty, too long, double submit, refresh, back button, slow network if relevant).`,
+        `Capture evidence: \`preview_snapshot\` with save=true gives a screenshotPath; copy it into the run with \`await factory.run.attach({ runId: "${run.id}", from: screenshotPath, as: "screenshots/${d.id}/slice-<N>-<step>.png" })\`, where N is the slice whose change the screenshot shows. Take one per meaningful state (before, after, error).`,
+        `Stop the app when done: \`await factory.app.down({ runId: "${run.id}", dispatchId: "${d.id}" })\`.`,
         `Write a short human-readable report to run file \`verification/${d.id}.md\` (what you tried, what you saw, screenshots).`,
         report(', findings: Finding[], screenshots: string[] /* run paths */'),
       ];
-    case 'reviewer:slice':
-      return [
-        `Review slice ${slice.n} (${slice.branch}). Get the diff: \`await factory.git.sliceDiff({ runId: "${run.id}", slice: ${slice.n} })\`. You may also read files at that branch with \`git show ${slice.branch}:<path>\` in ${repo.root}. Do NOT check out branches or edit anything.`,
-        `Check what the change removes or rewrites and why it was there: \`await factory.history.forDiff({ runId: "${run.id}", slice: ${slice.n} })\`. Flag any change that undoes a deliberate fix or edge case (category "history").`,
-        `See the deterministic gate result: \`await factory.checks.results({ runId: "${run.id}", slice: ${slice.n} })\`. Do not repeat what it already proves; focus on what it cannot.`,
-        'Severity drives the outcome: any critical/high/medium finding sends the slice back to the engineer. Use low/nit for polish. Be specific: file, line, what breaks, how to fix.',
-        report(', findings: Finding[]'),
-      ];
+    }
     case 'feature-reviewer:review':
       return [
         `Review the whole feature as one change. Slices: ${run.slices.map((/** @type {any} */ s) => `${s.n}) ${s.title}`).join('; ')}.`,
         `Diffs per slice: \`await factory.git.sliceDiff({ runId: "${run.id}", slice: N })\`; whole stack: \`await factory.git.sliceDiff({ runId: "${run.id}", slice: "all" })\`. Read-only: never check out or edit.`,
-        `History guard: \`await factory.history.forDiff({ runId: "${run.id}", slice: "all" })\`.`,
+        `History guard: \`await factory.history.forDiff({ runId: "${run.id}", slice: "all" })\`. Deterministic checks already passed on every slice (\`factory.checks.results({ runId: "${run.id}", slice: N })\`); do not repeat what they prove.`,
         'You are one of two independent reviewers from different model families. Assume the other reviewer is good; your value is what they might miss. Hunt for: requirement gaps, cross-slice integration bugs, unhandled edge cases, data integrity, security, broken history intent, missing tests.',
-        'Set `slice` on each finding when you can tell where it belongs.',
+        'Set `slice` on each finding when you can tell where it belongs. Severity drives the outcome: critical/high/medium findings are fixed and then re-checked by you; low/nit are follow-ups and are never re-raised.',
         report(', findings: Finding[]'),
       ];
-    case 'feature-reviewer:crossexam':
+    case 'feature-reviewer:recheck':
       return [
-        "Read the other reviewer's report (input). For EVERY finding, decide confirm or dispute after checking the code yourself, and give a reason. Disputed findings go to the human; confirmed blocking ones get fixed.",
-        'Then add any NEW findings you now see that neither report caught (do not repeat your own earlier findings).',
-        `Tools: \`factory.git.sliceDiff\`, \`factory.history.forDiff\` (runId "${run.id}").`,
-        report(', responses: [{ findingId, stance: "confirm" | "dispute", reason }], findings: Finding[]'),
+        `Read \`${d.extra.recheckFile}\`: your open findings, what the engineers did about each, and the slice heads you reviewed (\`reviewedHeads\`).`,
+        `See what changed since: for each slice, \`git -C <repo root> diff <reviewedHeads[N]> <branch>\` (branches and roots: \`factory.run.info({ runId: "${run.id}" })\`), or \`factory.git.sliceDiff\` for the current slice. Read-only: never check out or edit.`,
+        'For each finding: if it is fixed, or the engineer\'s reason for not changing it holds, list its id in `resolved`. Otherwise report it again in `findings` with the same id. Add a new finding only for something the fixes broke. Do not review anything else: this is a re-check, not a new review.',
+        report(', resolved: string[], findings: Finding[]'),
       ];
     case 'docs-writer:default':
       return [
-        `In YOUR_CWD (a fresh worktree): ${d.extra.refresh ? `\`git switch ${run.docs.branch}\` and update the existing doc for the latest changes` : `\`git switch -c ${run.docs.branch} ${d.extra.baseRef}\``}. ${setup}`,
+        shared,
+        `In YOUR_CWD: ${d.extra.refresh ? `\`git switch ${run.docs.branch}\` and update the existing doc for the latest changes` : `\`git switch -c ${run.docs.branch} ${d.extra.baseRef}\``}. ${setup}`,
         `Write the versioned feature doc at \`${docsDir}/<feature-slug>.md\`: plain-language summary, what changed and why, Mermaid diagrams of the data/request flow, decisions and trade-offs, how to test, follow-ups. Link the run id.`,
-        `Copy useful screenshots from the run (\`factory.run.list({ runId: "${run.id}", prefix: "screenshots/" })\`) into \`${docsDir}/<feature-slug>/\` with \`factory.run.export({ runId, path, to })\` and reference them from the doc. Name each exported file \`slice-N-<step>.png\`, taking N from the screenshot's folder (\`screenshots/slice-N.validate…/\`; use \`feature-<step>.png\` for \`screenshots/feature.validate…/\`) so each PR can show its own screenshots.`,
-        `Commit (trailer \`Slice: docs\`), run \`await factory.checks.run({ runId: "${run.id}", dispatchId: "${d.id}", cwd: YOUR_CWD })\` until ok, then \`git switch --detach\`.`,
+        `Copy useful screenshots from the run (\`factory.run.list({ runId: "${run.id}", prefix: "screenshots/" })\`) into \`${docsDir}/<feature-slug>/\` with \`factory.run.export({ runId, path, to })\` and reference them from the doc. Keep each file's \`slice-N-<step>.png\` name so each PR can show its own screenshots.`,
+        `Commit (trailer \`Slice: docs\`), run \`await factory.checks.run({ runId: "${run.id}", dispatchId: "${d.id}", cwd: YOUR_CWD })\` until ok, then \`git switch --detach\` and leave the tree clean.`,
         report(`, branch: "${run.docs.branch}", headSha: "<sha>", docPath: "${docsDir}/…"`),
       ];
     case 'qa-analyst:default':
@@ -146,23 +134,22 @@ function steps(run, d) {
         'Write each slice spec to the run as `slices/NN-<slug>.md` (factory.run.write), then write `slices.json`:',
         '```json\n{ "slices": [ { "n": 1, "slug": "notes-table", "title": "…", "layer": "data|api|ui|infra|docs|other", "summary": "what this PR contains", "why": "what it unlocks for the next slice / the user", "dependsOn": [], "ui": false, "testCases": ["TC-001"], "manualCases": [], "spec": "slices/01-notes-table.md" } ] }\n```',
         ...(multi ? [`This run spans several repos (${Object.values(run.repos).map((/** @type {any} */ r) => `\`${r.name}\`${r.primary ? ' (primary)' : ''}`).join(', ')}). Every slice changes exactly one repo: add \`"repo": "<name>"\` to each. Order slices so dependencies land first across repos (e.g. the service endpoint before the UI that calls it); each repo becomes its own PR stack.`] : []),
-        'Every TC id in test-plan.md must be assigned to exactly one slice: the one that makes it pass. Put it in `testCases` when the engineer writes an automated test for it (a deterministic check verifies each id appears in that slice\'s tests), or in `manualCases` when only a person in a browser can verify it (the manual tester owns those; only allowed on `ui: true` slices). `ui` is true when the slice changes what a user sees or does in the browser.',
+        'Every TC id in test-plan.md must be assigned to exactly one slice: the one that makes it pass. Put it in `testCases` when the engineer writes an automated test for it (a deterministic check verifies each id appears in that slice\'s tests), or in `manualCases` when only a person in a browser can verify it (the manual tester walks those once the feature is built; only allowed on `ui: true` slices). Follow the test plan\'s own automated/manual call for each case; if you disagree, say so in the slice spec rather than silently moving it. `ui` is true when the slice changes what a user sees or does in the browser.',
         report(''),
       ];
     case 'explainer:plan':
       return [
-        'Write ONE self-contained HTML page to run file `explainers/plan.html` (factory.run.write). It is shown inline in the T3 thread with html_render.',
-        'Style: no page background on html/body; use T3 theme CSS variables (var(--foreground), var(--muted-foreground), var(--card), var(--border), var(--accent), var(--radius), var(--font-sans), var(--font-mono), var(--chart-1..6)). Fluid width, no outer border or banner. Mermaid is fine via <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"; mermaid.initialize({ startOnLoad: true, theme: "neutral" })</script>.',
-        'Structure: (1) the problem and outcome in 3-4 plain sentences anyone can read; (2) a diagram of how it works; (3) the slices as an ordered story — "this table, so this endpoint, so this screen" — one card each with summary, why, and whether a user will see it; (4) decisions, risks and open questions the reviewer should weigh; (5) a collapsed <details> "For engineers" section with data model, API shapes, test coverage map (TC → slice) and anything needed to judge the plan is sound.',
-        'Be brief. The reader should understand the plan in two minutes and verify it in ten.',
+        'Write ONE JSON document to run file `explainers/plan.json` (factory.run.write). Do not write HTML: the factory validates your JSON, renders your Mermaid to SVG, adds what it already knows (slice cards, the order diagram, test assignments) and shows the page at the plan gate.',
+        'Shape:\n```ts\n{\n  intent: string /* one sentence: who gets what */,\n  outcome: string /* 2-4 plain sentences: what changes for users and how we will know it worked */,\n  needsYourCall: { title, detail, default /* what happens if nobody objects */ }[] /* open questions, assumptions, risky calls; [] when none */,\n  diagrams: { title, caption?, before?: Mermaid, after: Mermaid }[] /* 1-3 diagrams of how the system changes. Lead with a sequenceDiagram of the main user/request flow; add a flowchart of the parts touched with nodes marked `class X added`, `class Y changed` or `class Z removed` (the factory styles them). Omit before only for something brand new. 12 nodes or fewer each. */,\n  slices: { n, story /* why it comes here and what it unlocks next */, verify: string[] /* 1-4 concrete things to check in this PR */ }[] /* every slice in slices.json */,\n  tests: { id, what /* the behaviour, in plain words */, why /* what would break or go unnoticed without it */ }[] /* every TC id in test-plan.md; never test code */,\n  decisions: { choice, why, alternatives: string[] }[],\n  risks: { risk, level: "high" | "medium" | "low", mitigation }[],\n  engineering: { heading, items: string[] }[] /* collapsed section: data model, API shapes, what will not change and why */\n}\n```',
+        'Text fields allow `code` and **bold** only. Be brief: the reader should understand the plan in two minutes and verify it in ten.',
         report(''),
       ];
     case 'explainer:stack':
       return [
-        `Write ONE self-contained HTML page to run file \`explainers/stack.html\`. Same styling rules as the plan explainer (T3 theme variables, no page background, fluid width).`,
-        `Read each slice diff with \`factory.git.sliceDiff({ runId: "${run.id}", slice: N })\` and the run state with \`factory.run.info({ runId: "${run.id}" })\` (checks, reviews, screenshots).`,
-        'Structure: (1) what was built, in plain language, tied to the original request; (2) one diagram of the final flow; (3) the PR stack in order — for each slice: what it adds, why it comes here ("needed so the next slice can…"), what to look at closely, checks + review status, and screenshots (embed with <img src="ABSOLUTE_PATH">; get absolute paths from factory.run.list results joined to run.info().filesRoot); (4) disputed review findings the human must decide; (5) minor findings left as follow-ups.',
-        'Keep each slice card short; link to file paths rather than pasting code. Show at most a few key lines of code where it truly helps.',
+        `Read each slice diff (\`factory.git.sliceDiff({ runId: "${run.id}", slice: N })\`), the run state (\`factory.run.info({ runId: "${run.id}" })\`), the final feature review (input) and the fix reports (\`factory.run.list({ runId: "${run.id}", prefix: "reports/feature.fix" })\`). Describe what was built, not what was planned.`,
+        'Write ONE JSON document to run file `explainers/stack.json`. Do not write HTML: the factory adds check results, review status, the fixes made after review, screenshots and test status itself.',
+        'Shape:\n```ts\n{\n  built: string /* plain language, tied to the original request */,\n  risk: { level: 1 | 2 | 3 | 4 | 5, why: string } /* how much careful review this stack needs */,\n  needsYourCall: { title, detail, default }[] /* [] when none */,\n  diagrams: { title, caption?, before?: Mermaid, after: Mermaid }[] /* 1-3 diagrams of how the system changed, as built. Lead with a sequenceDiagram of the main user/request flow; add a flowchart of the parts touched with nodes marked `class X added`, `class Y changed` or `class Z removed` (the factory styles them). Omit before only for something brand new. 12 nodes or fewer each. */,\n  slices: { n, whatChanged /* one sentence, never a diff paraphrase */, whyThisWay /* from architecture.md; say "no rationale documented" if there is none */, verify: string[] /* the 1-4 spots where judgment matters: a migration, an auth check, an edge case, code that replaced something deliberate */, focus: string[] /* "path" or "path:12-40" to open first */, rewrittenLater?: string /* if a later PR rewrites this */ }[] /* every slice */,\n  tests: { id, what, why }[] /* every TC id: what the tests cover and why each matters; never paste test code */,\n  divergences: string[] /* where the build differs from the plan */,\n  followUps: string[]\n}\n```',
+        'Text fields allow `code` and **bold** only. Keep each slice short: the concrete "verify" lines are the most valuable part of the page.',
         report(''),
       ];
     default: {

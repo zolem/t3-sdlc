@@ -4,9 +4,8 @@ import { down, up } from '../lib/app.js';
 import { ensureSetup } from '../lib/checks.js';
 import { ledger, loadRun, writeRunFile, readRunFile, runFileExists } from '../lib/runs.js';
 import { runFile } from '../lib/store.js';
-import { findDispatch } from '../lib/pipeline.js';
-import { featureApp, sliceApp } from '../lib/pipeline.js';
-import { primaryRepo, repoForCwd } from '../lib/workspace.js';
+import { featureApp, findDispatch } from '../lib/pipeline.js';
+import { primaryRepo } from '../lib/workspace.js';
 import { repoEnvVar } from '../lib/repoContract.js';
 
 /** @type {import('../registry.js').ModuleDef} */
@@ -15,42 +14,28 @@ export default {
   description: "Start and stop the target app from a checkout using the repo's own app.up / app.down commands.",
   functions: {
     up: {
-      signature: 'factory.app.up({ runId: string, dispatchId: string, cwd?: string /* your worktree, for slice validation */ }): Promise<{ url: string, port: number, pid: number, logFile: string }>',
-      description: "Install deps if needed, start the app on a free port, wait until it is ready, and return its URL. Slice validation serves the slice repo's app from your worktree; whole-feature validation serves the workspace (or primary) app from each repo thread's prepared checkout, passed as ORCH_REPO_<NAME>. One app per dispatch.",
+      signature: 'factory.app.up({ runId: string, dispatchId: string }): Promise<{ url: string, port: number, pid: number, logFile: string }>',
+      description: "Install deps if needed, start the app on a free port, wait until it is ready, and return its URL. Serves the workspace (or primary) app from each repo thread's prepared checkout of its finished stack, passed as ORCH_REPO_<NAME>. One app per dispatch.",
       tags: ['start', 'server', 'preview', 'browser', 'manual test', 'vm'],
-      handler: async ({ runId, dispatchId, cwd }, ctx) => {
+      handler: async ({ runId, dispatchId }, ctx) => {
         const run = loadRun(ctx.home, runId);
-        const d = findDispatch(run, dispatchId);
-        const slice = d.slice ? run.slices.find((/** @type {any} */ s) => s.n === d.slice) : null;
+        findDispatch(run, dispatchId);
         /** @type {Record<string, string>} */
-        let extraEnv = {};
-        let appDef;
-        let dir;
-        if (slice) {
-          // One slice: its own repo's app, served from the tester's worktree.
-          appDef = sliceApp(run, slice);
-          dir = cwd || ctx.cwd;
-          const own = repoForCwd(run, dir);
-          if (!own || own.name !== slice.repo) throw new Error(`Run app.up from your worktree of repo "${slice.repo}" (pass cwd).`);
-          extraEnv = { [repoEnvVar(own.name)]: dir };
-          const setupRes = await ensureSetup(dir, own.contract);
-          if (setupRes && !setupRes.ok) throw new Error(`Setup failed before starting the app: ${setupRes.summary}\n${setupRes.output || ''}`);
-        } else {
-          // Whole feature: every repo thread's prepared checkout of its finished stack.
-          appDef = featureApp(run);
-          const missing = Object.values(run.repos).filter((/** @type {any} */ r) => run.repoState?.[r.name] && !r.checkout);
-          if (missing.length) throw new Error(`Repos without a prepared checkout: ${missing.map((/** @type {any} */ r) => r.name).join(', ')}`);
-          for (const r of Object.values(run.repos)) {
-            const repo = /** @type {any} */ (r);
-            const path = repo.checkout?.path || repo.root;
-            extraEnv[repoEnvVar(repo.name)] = path;
-            if (repo.checkout) {
-              const setupRes = await ensureSetup(path, repo.contract);
-              if (setupRes && !setupRes.ok) throw new Error(`Setup failed in ${repo.name}: ${setupRes.summary}\n${setupRes.output || ''}`);
-            }
+        const extraEnv = {};
+        // The whole feature: every repo thread's prepared checkout of its finished stack.
+        const appDef = featureApp(run);
+        const missing = Object.values(run.repos).filter((/** @type {any} */ r) => run.repoState?.[r.name] && !r.checkout);
+        if (missing.length) throw new Error(`Repos without a prepared checkout: ${missing.map((/** @type {any} */ r) => r.name).join(', ')}`);
+        for (const r of Object.values(run.repos)) {
+          const repo = /** @type {any} */ (r);
+          const path = repo.checkout?.path || repo.root;
+          extraEnv[repoEnvVar(repo.name)] = path;
+          if (repo.checkout) {
+            const setupRes = await ensureSetup(path, repo.contract);
+            if (setupRes && !setupRes.ok) throw new Error(`Setup failed in ${repo.name}: ${setupRes.summary}\n${setupRes.output || ''}`);
           }
-          dir = extraEnv[repoEnvVar(primaryRepo(run).name)];
         }
+        const dir = extraEnv[repoEnvVar(primaryRepo(run).name)];
         if (!appDef) throw new Error('Browser validation is not enabled for this run (no app in the contract or workspace, or the user skipped it).');
         const rel = `apps/${dispatchId}.json`;
         if (runFileExists(ctx.home, runId, rel)) {
@@ -75,9 +60,8 @@ export default {
         const run = loadRun(ctx.home, runId);
         const rel = `apps/${dispatchId}.json`;
         const info = runFileExists(ctx.home, runId, rel) ? JSON.parse(readRunFile(ctx.home, runId, rel)) : {};
-        const d = findDispatch(run, dispatchId);
-        const sl = d.slice ? run.slices.find((/** @type {any} */ s) => s.n === d.slice) : null;
-        const appDef = sl ? sliceApp(run, sl) : featureApp(run);
+        findDispatch(run, dispatchId);
+        const appDef = featureApp(run);
         const res = await down({ pid: info.pid, cwd: cwd || info.cwd || ctx.cwd, app: appDef, vars: { runId, dispatchId, port: String(info.port || ''), ...(info.env || {}) } });
         if (info.pid) fs.rmSync(runFile(ctx.home, runId, rel), { force: true });
         ledger(ctx.home, runId, { event: 'app.down', dispatchId, ...res });

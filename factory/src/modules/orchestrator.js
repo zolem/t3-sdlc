@@ -4,7 +4,7 @@
 
 import path from 'node:path';
 import { activeRepos, advance, decide, findDispatch, DEFAULT_SETTINGS, FOREMAN } from '../lib/pipeline.js';
-import { availabilityFrom, loadPolicy, resolveTargets } from '../lib/policy.js';
+import { availabilityFrom, availabilityFromList, loadPolicy, policyTargets, resolveTargets } from '../lib/policy.js';
 import { CONTRACTS } from '../lib/contracts.js';
 import { commonRoot, currentBranch, repoRoot, sha } from '../lib/git.js';
 import { createRunDir, ledger, listRuns, loadRun, mutateRun, readRunFile, runFileExists, writeRunFile } from '../lib/runs.js';
@@ -13,6 +13,7 @@ import { doctor } from '../lib/doctor.js';
 import { getIssue, issueToBrief, linearConfigured } from '../lib/linear.js';
 import { now, readJsonl, runDir, slugify } from '../lib/store.js';
 import { runInfo } from './run.js';
+import { writeCostReport } from './report.js';
 
 /** @param {string} home @param {string} runId */
 export function envFor(home, runId) {
@@ -49,6 +50,24 @@ function routingTable(run) {
   return out;
 }
 
+/** Cost section of the summary (settings.costReport, on by default). Never fails the summary. @param {string} home @param {any} run */
+function costSection(home, run) {
+  if (run.settings?.costReport === false) return [];
+  try {
+    const c = writeCostReport(home, run.id);
+    const $ = (/** @type {number} */ x) => `$${x.toFixed(2)}`;
+    return [
+      '',
+      '### Cost (API list price)',
+      `${c.totals.estimatedUsd ? '~' : ''}${$(c.totals.usd)}${c.totals.estimatedUsd ? ` (${$(c.totals.measuredUsd)} measured + ${$(c.totals.estimatedUsd)} estimated)` : ''} · ${c.totals.wallMinutes} min wall · ${c.totals.tokens.total >= 1e6 ? `${(c.totals.tokens.total / 1e6).toFixed(1)}M` : `${Math.round(c.totals.tokens.total / 1000)}k`} tokens${c.totals.unmeasured ? ` · ${c.totals.unmeasured} unmeasured` : ''}`,
+      ...c.byPhase.map(p => `- ${p.label}: ${$(p.usd + p.estimatedUsd)}${p.wallMinutes !== null ? `, ${p.wallMinutes} min` : ''}`),
+      `Full report: \`${c.htmlPath}\`. Show it: factory.run.read({ runId: "${run.id}", path: "${c.runPath}" }), then html_render.`,
+    ];
+  } catch (err) {
+    return ['', `Cost report unavailable: ${err instanceof Error ? err.message : err}`];
+  }
+}
+
 const ACTION_HELP = `Execute every action in order:
 - notify: t3_thread_send the message to action.threadId, then factory.orchestrator.sent({ runId, id }).
 - launch (foreman): start the repo thread as action.how says, then factory.orchestrator.launched({ runId, repo, threadId }).
@@ -62,11 +81,10 @@ export default {
   description: 'Drive a run: start it, get the next actions, record dispatch lifecycle and human decisions. Orchestrator thread only.',
   functions: {
     start: {
-      signature: 'factory.orchestrator.start({ repo: string /* target repo path */, threadId: string /* your own T3 thread id: repo threads report to it */, brief?: string, ticket?: string /* e.g. "ABC-123" */, title?: string, capabilities: object /* full orchestrator_capabilities result */, skip?: ("browser-validation" | "publish")[] /* optional stages the user agreed to run without */, overrides?: { roles: Record<string, { targets: Target[] }> }, allowDirty?: boolean }): Promise<{ runId, routing, actions } | { preflight, actions: [{ type: "preflight" }] }>',
+      signature: 'factory.orchestrator.start({ repo: string /* target repo path */, threadId: string /* your own T3 thread id: repo threads report to it */, brief?: string, ticket?: string /* e.g. "ABC-123" */, title?: string, available?: string[] /* the policy targets orchestrator_capabilities lists, as "providerInstanceId/model" (start returns an availability action listing them) */, skip?: ("browser-validation" | "publish")[] /* optional stages the user agreed to run without */, overrides?: { roles: Record<string, { targets: Target[] }> }, allowDirty?: boolean }): Promise<{ runId, routing, unavailable, actions } | { preflight, actions: [{ type: "preflight" }] } | { actions: [{ type: "availability", targets }] }>',
       description: 'Preflight the repo (or workspace) with the doctor, then create a run from a prompt or Linear ticket, freeze the routing policy against live capabilities, and return the first actions. When something the flow needs is missing, returns a preflight action instead of starting.',
       tags: ['begin', 'new run', 'kickoff', 'ticket', 'linear'],
-      handler: async ({ repo, threadId, brief, ticket, title, capabilities, overrides, allowDirty, settings, skip }, ctx) => {
-        if (!capabilities?.providers) throw new Error('Pass the full result of the T3 orchestrator_capabilities tool as `capabilities`.');
+      handler: async ({ repo, threadId, brief, ticket, title, available, capabilities, overrides, allowDirty, settings, skip }, ctx) => {
         if (!threadId) throw new Error('Pass threadId: your own T3 thread id (t3_thread_list returns it as currentThreadId). Repo threads report to it.');
         const root = commonRoot(repoRoot(path.resolve(ctx.cwd, repo || '.')));
         const skipList = Array.isArray(skip) ? skip : [];
@@ -104,13 +122,26 @@ export default {
         const stamp = now().replace(/[-:T]/g, '').slice(0, 12);
         const id = `${slugify(runTitle.split(/\s+/).slice(0, 6).join(' '))}-${stamp}`;
         const { policy, sources } = loadPolicy({ home: ctx.home, repo: root, overrides });
-        const availability = availabilityFrom(capabilities);
+        const targets = policyTargets(policy);
+        if (!Array.isArray(available) && !capabilities?.providers) {
+          return {
+            started: false,
+            actions: [{
+              type: 'availability',
+              targets,
+              how: 'Check each target against your orchestrator_capabilities result: available when that providerInstanceId has canRunChildTask true and lists that model id. Call start again with the same arguments plus available: the targets that are available, copied exactly.',
+            }],
+          };
+        }
+        // `available` (a short list the orchestrator checked) is preferred: copying the whole capabilities payload by hand drops models and options.
+        const availability = Array.isArray(available) ? availabilityFromList(available) : availabilityFrom(capabilities);
+        const unavailable = targets.filter(t => !(availability.available[t.slice(0, t.indexOf('/'))] || []).includes(t.slice(t.indexOf('/') + 1)));
         /** @type {Record<string, any>} */
         const repos = {};
         for (const r of ws.repos) repos[r.name] = { name: r.name, root: r.root, primary: r.primary, baseBranch: currentBranch(r.root) || 'HEAD', baseSha: sha(r.root), contract: loadContract(r.root) };
         const primary = Object.values(repos).find(r => r.primary);
         const run = {
-          id, title: runTitle, status: 'active', cursor: 'requirements', createdAt: now(), updatedAt: now(),
+          id, title: runTitle, status: 'active', cursor: 'intake', createdAt: now(), updatedAt: now(),
           tcPrefix: runTitle.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 4).map(w => w[0].toUpperCase()).join('') + stamp.slice(-2),
           intake,
           repo: primary,
@@ -121,7 +152,7 @@ export default {
           workspace: { name: ws.name, app: ws.app },
           capabilities: { ...pre.enabled, skipped: skipList },
           policy, policySources: sources, availability,
-          settings: { ...DEFAULT_SETTINGS, ...(settings || {}) },
+          settings: { ...DEFAULT_SETTINGS, ...(policy.settings || {}), ...(settings || {}) },
           dispatches: [], gates: { plan: [], stack: [] }, slices: [], feature: { round: 1 }, docs: null, stackRound: 1, allowances: {}, prs: [], blocked: {},
         };
         const routing = routingTable(run);
@@ -129,9 +160,9 @@ export default {
         if (broken.length) throw new Error(`Policy cannot be satisfied with the providers available right now:\n${broken.map(([k, v]) => `- ${k}: ${v}`).join('\n')}`);
         createRunDir(ctx.home, run);
         writeRunFile(ctx.home, id, 'brief.md', briefText.trim() + '\n');
-        ledger(ctx.home, id, { event: 'run.started', title: runTitle, repo: root, repos: Object.keys(repos), capabilities: run.capabilities, intake, routing, policySources: sources.map(s => s.layer) });
+        ledger(ctx.home, id, { event: 'run.started', title: runTitle, repo: root, repos: Object.keys(repos), capabilities: run.capabilities, intake, routing, unavailable, policySources: sources.map(s => s.layer) });
         const first = step(ctx.home, id);
-        return { runId: id, title: runTitle, runFolder: path.join(runDir(ctx.home, id), 'files'), routing, ...first, help: ACTION_HELP };
+        return { runId: id, title: runTitle, runFolder: path.join(runDir(ctx.home, id), 'files'), routing, unavailable, ...first, help: ACTION_HELP };
       },
     },
     next: {
@@ -202,8 +233,8 @@ export default {
       },
     },
     decide: {
-      signature: "factory.orchestrator.decide({ runId: string, gate: 'plan' | 'stack' | 'blocked', decision: 'approve' | 'changes' | 'retry' | 'abort', notes?: string, scope?: string /* which blocked scope */, repos?: string[] /* stack changes: which repos (default all) */ }): Promise<{ status, cursor, actions }>",
-      description: "Foreman: record the human's decision at a gate (approve / changes with notes) or for a blocked scope (retry / abort), then advance.",
+      signature: "factory.orchestrator.decide({ runId: string, gate: 'plan' | 'stack' | 'blocked', decision: 'approve' | 'changes' | 'retry' | 'accept' | 'abort', notes?: string, scope?: string /* which blocked scope */, repos?: string[] /* stack changes: which repos (default all) */ }): Promise<{ status, cursor, actions }>",
+      description: "Foreman: record the human's decision at a gate (approve / changes with notes) or for a blocked scope (retry / abort; accept continues past open feature findings), then advance.",
       tags: ['approve', 'gate', 'review', 'human', 'feedback'],
       handler: ({ runId, gate, decision, notes, scope, repos }, ctx) => {
         mutateRun(ctx.home, runId, run => decide(run, { gate, decision, notes, scope, repos }, envFor(ctx.home, runId)));
@@ -245,15 +276,16 @@ export default {
           ...(run.prs.length ? run.prs.map((/** @type {any} */ p) => `- ${p.title}${p.url ? ` — ${p.url}` : ' (dry run)'}`) : ['Not published.']),
           '',
           '### Slices',
-          ...run.slices.map((/** @type {any} */ s) => `- ${s.n}. [${s.repo}] ${s.title} — ${s.phase}, ${s.fixes} fix round(s), \`${s.branch}\``),
+          ...run.slices.map((/** @type {any} */ s) => `- ${s.n}. [${s.repo}] ${s.title} — ${s.phase}, \`${s.branch}\``),
           '',
           '### Feature review',
-          run.feature.last ? `Round ${run.feature.last.round}: ${run.feature.last.blocking} blocking, ${run.feature.last.disputed} disputed, ${run.feature.last.minor} minor.` : 'Not run.',
+          run.feature.last ? `Round ${run.feature.last.round}: ${run.feature.last.blocking} blocking, ${run.feature.last.minor} minor.${run.feature.accepted ? ` The user accepted ${run.feature.accepted.open} open finding(s).` : ''}` : 'Not run.',
           '',
           '### Who did what',
           '| Dispatch | Model | Minutes |',
           '|---|---|---|',
           ...done.map((/** @type {any} */ d) => `| ${d.title} | ${d.target.model} | ${mins(d) ?? '–'} |`),
+          ...costSection(ctx.home, run),
         ];
         return lines.join('\n');
       },

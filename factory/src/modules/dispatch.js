@@ -1,8 +1,9 @@
 // @ts-check
 import { findDispatch } from '../lib/pipeline.js';
 import { validateReport } from '../lib/report.js';
-import { ledger, loadRun, mutateRun, readRunFile, runFileExists, writeRunFile } from '../lib/runs.js';
-import { now } from '../lib/store.js';
+import { ledger, listRunFiles, loadRun, mutateRun, readRunFile, runFileExists, writeRunFile } from '../lib/runs.js';
+import { now, runFile } from '../lib/store.js';
+import { planPage, stackPage } from '../lib/explainer.js';
 import { verdictOf } from '../lib/contracts.js';
 
 /** @type {import('../registry.js').ModuleDef} */
@@ -25,7 +26,20 @@ export default {
           ledger(ctx.home, runId, { event: 'dispatch.rejected', dispatchId, errors });
           throw new Error(`Report rejected. Fix these and report again:\n- ${errors.join('\n- ')}`);
         }
-        const verdict = Array.isArray(report.findings) && ['reviewer', 'feature-reviewer', 'manual-tester'].includes(d.role) ? verdictOf(report.findings) : undefined;
+        if (d.role === 'explainer') {
+          // The factory owns the page: fill the template from the validated JSON and the run state.
+          const pageCtx = { run, ...files, list: (/** @type {string} */ prefix) => listRunFiles(ctx.home, runId, prefix).map(f => f.path), abs: (/** @type {string} */ rel) => runFile(ctx.home, runId, rel) };
+          const doc = JSON.parse(readRunFile(ctx.home, runId, `explainers/${d.mode}.json`));
+          let html;
+          try {
+            html = d.mode === 'plan' ? planPage(doc, pageCtx) : stackPage(doc, pageCtx);
+          } catch (err) {
+            ledger(ctx.home, runId, { event: 'dispatch.rejected', dispatchId, errors: [`render: ${err instanceof Error ? err.message : err}`] });
+            throw new Error(`Report rejected. The page could not be built from explainers/${d.mode}.json (${err instanceof Error ? err.message : err}). Check every field matches the shape in your brief, then report again.`);
+          }
+          writeRunFile(ctx.home, runId, `explainers/${d.mode}.html`, html);
+        }
+        const verdict = Array.isArray(report.findings) && ['feature-reviewer', 'manual-tester'].includes(d.role) ? verdictOf(report.findings) : undefined;
         writeRunFile(ctx.home, runId, `reports/${dispatchId}.json`, JSON.stringify({ dispatchId, role: d.role, mode: d.mode, model: d.target.model, verdict, ...report }, null, 2));
         mutateRun(ctx.home, runId, r => {
           const x = findDispatch(r, dispatchId);

@@ -14,7 +14,7 @@ import { CONTENT_ROOT, readJson } from './store.js';
 /**
  * @typedef {{ providerInstanceId: string, model: string, options?: Record<string, string | boolean> }} Target
  * @typedef {{ targets: Target[], panel?: number, avoidFamilyOf?: string, isolation?: 'shared' | 'worktree', note?: string }} RolePolicy
- * @typedef {{ version: number, roles: Record<string, RolePolicy> }} Policy
+ * @typedef {{ version: number, roles: Record<string, RolePolicy>, settings?: Record<string, unknown> }} Policy
  * @typedef {{ available: Record<string, string[]>, options: Record<string, Record<string, string[]>> }} Availability
  */
 
@@ -42,7 +42,9 @@ export function familyOf(target) {
 /** @param {Policy | undefined} base @param {Partial<Policy> | undefined} layer */
 function mergePolicy(base, layer) {
   if (!layer) return base;
+  /** @type {Policy} */
   const out = { version: layer.version ?? base?.version ?? 1, roles: { ...(base?.roles || {}) } };
+  if (base?.settings || layer.settings) out.settings = { ...(base?.settings || {}), ...(layer.settings || {}) };
   for (const [role, entry] of Object.entries(layer.roles || {})) {
     out.roles[role] = { ...(out.roles[role] || { targets: [] }), ...entry };
   }
@@ -87,7 +89,9 @@ export function validatePolicy(policy) {
 }
 
 /**
- * Reduce the orchestrator_capabilities payload to what routing needs.
+ * Reduce the orchestrator_capabilities payload to what routing needs. A model
+ * listed without an `options` array has unknown options, so its policy options
+ * are passed through rather than dropped.
  * @param {any} capabilities
  * @returns {Availability}
  */
@@ -98,13 +102,39 @@ export function availabilityFrom(capabilities) {
     if (!p.canRunChildTask) continue;
     out.available[p.providerInstanceId] = (p.models || []).map((/** @type {any} */ m) => m.id);
     for (const m of p.models || []) {
+      if (!Array.isArray(m.options)) continue;
       /** @type {Record<string, string[]>} */
       const opts = {};
-      for (const o of m.options || []) opts[o.id] = o.type === 'boolean' ? ['true', 'false'] : (o.options || []).map((/** @type {any} */ x) => x.id);
+      for (const o of m.options) opts[o.id] = o.type === 'boolean' ? ['true', 'false'] : (o.options || []).map((/** @type {any} */ x) => x.id);
       out.options[`${p.providerInstanceId}/${m.id}`] = opts;
     }
   }
   return out;
+}
+
+/**
+ * Availability from a list of "providerInstanceId/model" strings the
+ * orchestrator confirmed. Options are unknown, so they pass through.
+ * @param {string[]} list
+ * @returns {Availability}
+ */
+export function availabilityFromList(list) {
+  /** @type {Availability} */
+  const out = { available: {}, options: {} };
+  for (const entry of list) {
+    const i = entry.indexOf('/');
+    if (i <= 0) throw new Error(`available: "${entry}" is not "providerInstanceId/model"`);
+    (out.available[entry.slice(0, i)] ||= []).push(entry.slice(i + 1));
+  }
+  return out;
+}
+
+/**
+ * Every distinct "providerInstanceId/model" the policy can route to.
+ * @param {Policy} policy
+ */
+export function policyTargets(policy) {
+  return [...new Set(Object.values(policy.roles).flatMap(r => r.targets.map(t => `${t.providerInstanceId}/${t.model}`)))];
 }
 
 /**

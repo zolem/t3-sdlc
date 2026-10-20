@@ -12,6 +12,9 @@ cd "$ROOT"
 cp -R roles policy skills docs examples LICENSE README.md package.json "$STAGE/"
 mkdir -p "$STAGE/factory"
 cp -R factory/bin factory/src factory/package.json "$STAGE/factory/"
+cp factory/package-lock.json "$STAGE/factory/"
+# Runtime dependencies (the explainer's diagram renderer) ship inside the tarball.
+(cd "$STAGE/factory" && npm ci --omit=dev --no-audit --no-fund --silent)
 if [ -n "$VERSION" ]; then
   node -e 'const f=process.argv[1],p=JSON.parse(require("fs").readFileSync(f));p.version=process.argv[2];require("fs").writeFileSync(f,JSON.stringify(p,null,2)+"\n")' "$STAGE/package.json" "$VERSION"
 fi

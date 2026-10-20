@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "unit": "USD per 1M tokens (API list price)",
+  "note": "Layered like policy: this file (org) → ~/.t3-sdlc/rates.json (user) → <repo>/.orchestrate/rates.json (repo); a later layer replaces a model entry wholesale. Keys are the model ids used in policy targets. `longContext` applies to a whole request when its prompt (uncached + cached + cache-write input) exceeds `above` tokens. `priority` applies when the dispatch target ran with serviceTier \"priority\". `reported: true` means the provider bills a cost we use as-is (no public per-token price).",
+  "models": {
+    "claude-haiku-5-5": {
+      "input": 0.1, "cachedInput": 0.01, "cacheWrite5m": 0.125, "cacheWrite1h": 0.2, "output": 0.5,
+      "longContext": { "above": 100000, "input": 0.5, "cachedInput": 0.05, "cacheWrite5m": 0.625, "cacheWrite1h": 1.0, "output": 2.5 },
+      "source": "T3 usage-model-rates.json (LiteLLM, fetched 2026-10-19); cross-checked against Claude Code cost-state within ~1% on 17 sessions",
+      "verified": true
+    },
+    "claude-sonnet-5-5": {
+      "input": 2.0, "cachedInput": 0.1, "cacheWrite5m": 2.5, "cacheWrite1h": 4.0, "output": 10.0,
+      "source": "T3 usage-model-rates.json (LiteLLM, fetched 2026-10-19)",
+      "verified": false
+    },
+    "claude-opus-5-5": {
+      "input": 4.0, "cachedInput": 0.2, "cacheWrite5m": 5.0, "cacheWrite1h": 8.0, "output": 20.0,
+      "source": "T3 usage-model-rates.json (LiteLLM, fetched 2026-10-19)",
+      "verified": false
+    },
+    "gpt-6.1-sol": {
+      "input": 2.0, "cachedInput": 0.1, "cacheWrite5m": 2.5, "cacheWrite1h": 2.5, "output": 10.0,
+      "longContext": { "above": 272000, "input": 4.0, "cachedInput": 0.2, "cacheWrite5m": 5.0, "cacheWrite1h": 5.0, "output": 15.0 },
+      "priority": { "input": 4.0, "cachedInput": 0.2, "cacheWrite5m": 5.0, "cacheWrite1h": 5.0, "output": 20.0 },
+      "source": "T3 usage-model-rates.json (LiteLLM, fetched 2026-10-19)",
+      "verified": false
+    },
+    "gpt-6-luna": {
+      "input": 0.1, "cachedInput": 0.01, "cacheWrite5m": 0.125, "cacheWrite1h": 0.125, "output": 0.5,
+      "longContext": { "above": 272000, "input": 0.2, "cachedInput": 0.02, "cacheWrite5m": 0.25, "cacheWrite1h": 0.25, "output": 0.75 },
+      "priority": { "input": 0.2, "cachedInput": 0.02, "cacheWrite5m": 0.25, "cacheWrite1h": 0.25, "output": 1.0 },
+      "source": "T3 usage-model-rates.json (LiteLLM, fetched 2026-10-19)",
+      "verified": true
+    },
+    "baseten/zai-org/GLM-5.3-Flash": {
+      "input": 0.15, "cachedInput": 0.03, "output": 0.5,
+      "source": "T3 usage-model-rates.json (LiteLLM baseten/zai-org/GLM-5.3-Flash, fetched 2026-10-19)",
+      "verified": false
+    },
+    "baseten/deepseek-ai/DeepSeek-V4.1-Flash": {
+      "input": 0.3, "cachedInput": 0.007, "output": 1.2,
+      "source": "T3 usage-model-rates.json (LiteLLM baseten/deepseek-ai/DeepSeek-V4.1-Flash, fetched 2026-10-19)",
+      "verified": false
+    },
+    "baseten/deepseek-ai/DeepSeek-V4.1-Flash-Fast": {
+      "input": 0.6, "cachedInput": 0.014, "output": 2.4,
+      "source": "T3 usage-model-rates.json (LiteLLM baseten/deepseek-ai/DeepSeek-V4.1-Flash-Fast, fetched 2026-10-19)",
+      "verified": false
+    },
+    "composer-2.5": {
+      "reported": true,
+      "source": "No public per-token price in T3's rate table; Cursor's billed cost (T3 Cursor usage cache) is used",
+      "verified": false
+    },
+    "default": {
+      "reported": true,
+      "source": "Cursor Auto: model chosen by Cursor, no rate applies; Cursor's billed cost is used",
+      "verified": false
+    }
+  }
+}

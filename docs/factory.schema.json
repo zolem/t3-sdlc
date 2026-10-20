@@ -43,7 +43,10 @@
     "docs": {
       "type": "object",
       "additionalProperties": false,
-      "properties": { "dir": { "type": "string", "description": "Where feature docs are written (default docs/features)." } }
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Write a versioned feature doc as the top PR of the stack (default false)." },
+        "dir": { "type": "string", "description": "Where feature docs are written (default docs/features)." }
+      }
     },
     "context": { "type": "object", "description": "Reserved for context hints." }
   }

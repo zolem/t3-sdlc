@@ -1,6 +1,6 @@
 // @ts-check
 import path from 'node:path';
-import { availabilityFrom, familyOf, loadPolicy, resolveTargets } from '../lib/policy.js';
+import { availabilityFrom, availabilityFromList, familyOf, loadPolicy, policyTargets, resolveTargets } from '../lib/policy.js';
 import { loadRun } from '../lib/runs.js';
 
 /** @type {import('../registry.js').ModuleDef} */
@@ -21,13 +21,20 @@ export default {
       },
     },
     resolve: {
-      signature: 'factory.policy.resolve({ role: string, repo?: string, capabilities?: object, avoidFamilies?: string[] }): Promise<{ targets, fallbacks, skipped, warnings }>',
-      description: 'Preview which model a role would get, given live orchestrator_capabilities.',
+      signature: 'factory.policy.resolve({ role: string, repo?: string, available?: string[] /* "providerInstanceId/model" */, capabilities?: object, avoidFamilies?: string[] }): Promise<{ targets, fallbacks, skipped, warnings }>',
+      description: 'Preview which model a role would get, given the targets available right now.',
       tags: ['routing', 'models'],
-      handler: ({ role, repo, capabilities, avoidFamilies }, ctx) => {
+      handler: ({ role, repo, available, capabilities, avoidFamilies }, ctx) => {
         const { policy } = loadPolicy({ home: ctx.home, repo: repo ? path.resolve(ctx.cwd, repo) : undefined });
-        return resolveTargets({ policy, role, availability: capabilities ? availabilityFrom(capabilities) : undefined, avoidFamilies });
+        const availability = Array.isArray(available) ? availabilityFromList(available) : capabilities ? availabilityFrom(capabilities) : undefined;
+        return resolveTargets({ policy, role, availability, avoidFamilies });
       },
+    },
+    targets: {
+      signature: 'factory.policy.targets({ repo?: string }): Promise<string[]>',
+      description: 'Every "providerInstanceId/model" the merged policy can route to.',
+      tags: ['routing', 'models', 'availability'],
+      handler: ({ repo }, ctx) => policyTargets(loadPolicy({ home: ctx.home, repo: repo ? path.resolve(ctx.cwd, repo) : undefined }).policy),
     },
     family: {
       signature: 'factory.policy.family({ providerInstanceId: string, model: string }): Promise<string>',

@@ -43,7 +43,7 @@ export const CONTRACTS = {
   },
   'context-curator': {
     default: {
-      t3Role: 'research', isolation: 'shared', summary: 'Requirements + repo/org docs → focused context briefing.',
+      t3Role: 'research', isolation: 'shared', summary: 'Brief + repo/org docs → focused context briefing (runs alongside the product manager).',
       outputs: ['context.md'], reportShape: `${REPORT_BASE} }`,
       capabilities: ['run.read', 'run.write', 'repo.contract', 'dispatch.report'],
     },
@@ -71,50 +71,33 @@ export const CONTRACTS = {
   },
   explainer: {
     plan: {
-      t3Role: 'design', isolation: 'shared', summary: 'Planning docs → one HTML page a non-technical reader can follow, with technical depth below.',
-      outputs: ['explainers/plan.html'], reportShape: `${REPORT_BASE} }`,
+      t3Role: 'design', isolation: 'shared', summary: 'Planning docs → the judgment calls and before/after diagrams the factory renders into the plan page.',
+      outputs: ['explainers/plan.json'], reportShape: `${REPORT_BASE} }`,
       capabilities: ['run.read', 'run.write', 'run.list', 'dispatch.report'],
     },
     stack: {
-      t3Role: 'design', isolation: 'shared', summary: 'Finished slices → HTML walkthrough of the PR stack in dependency order.',
-      outputs: ['explainers/stack.html'], reportShape: `${REPORT_BASE} }`,
+      t3Role: 'design', isolation: 'shared', summary: 'Finished slices → what to verify in each PR and before/after diagrams the factory renders into the stack page.',
+      outputs: ['explainers/stack.json'], reportShape: `${REPORT_BASE} }`,
       capabilities: ['run.read', 'run.write', 'run.list', 'run.info', 'git.sliceDiff', 'dispatch.report'],
     },
   },
   engineer: {
     build: {
-      t3Role: 'implementation', isolation: 'worktree', summary: 'Implement one slice on its branch with tests; checks must pass.',
+      t3Role: 'implementation', isolation: 'shared', summary: 'Implement one slice on its branch with tests; checks must pass.',
       reportShape: `${REPORT_BASE}, branch: string, headSha: string }`,
       capabilities: ['run.read', 'checks.run', 'history.why', 'dispatch.report'],
     },
-    fix: {
-      t3Role: 'implementation', isolation: 'worktree', summary: 'Fix review/validation findings on the slice branch; checks must pass.',
-      reportShape: `${REPORT_BASE}, branch: string, headSha: string, addressed: { id: string, how: string }[] }`,
-      capabilities: ['run.read', 'checks.run', 'history.why', 'dispatch.report'],
-    },
     'feature-fix': {
-      t3Role: 'implementation', isolation: 'worktree', summary: "Fix this repo's share of the feature-level findings in the right slices, restack, re-run checks on every touched slice.",
+      t3Role: 'implementation', isolation: 'shared', summary: "Fix this repo's share of the feature-level findings in the right slices, restack, re-run checks on every touched slice.",
       reportShape: `${REPORT_BASE}, addressed: { id: string, slice: number, how: string }[] }`,
       capabilities: ['run.read', 'run.info', 'checks.run', 'git.restack', 'history.why', 'dispatch.report'],
     },
   },
   'manual-tester': {
-    slice: {
-      t3Role: 'test', isolation: 'worktree', summary: 'Run the app from the slice branch and exercise its user-facing behavior in a browser.',
-      reportShape: `${REPORT_BASE}, findings: Finding[], screenshots: string[] /* run paths from run.attach */ }`,
-      capabilities: ['run.read', 'app.up', 'app.down', 'run.attach', 'run.write', 'dispatch.report'],
-    },
     feature: {
-      t3Role: 'test', isolation: 'shared', summary: "Run the integrated feature (every repo at its finished stack) and walk every user story.",
+      t3Role: 'test', isolation: 'shared', summary: "Run the integrated feature (every repo at its finished stack) and walk every user story and browser-only test case.",
       reportShape: `${REPORT_BASE}, findings: Finding[], screenshots: string[] }`,
       capabilities: ['run.read', 'app.up', 'app.down', 'run.attach', 'run.write', 'dispatch.report'],
-    },
-  },
-  reviewer: {
-    slice: {
-      t3Role: 'review', isolation: 'shared', summary: 'Independent review of one slice diff (different model family than its author).',
-      reportShape: `${REPORT_BASE}, findings: Finding[] }`,
-      capabilities: ['run.read', 'git.sliceDiff', 'history.forDiff', 'history.why', 'checks.results', 'dispatch.report'],
     },
   },
   'feature-reviewer': {
@@ -123,15 +106,15 @@ export const CONTRACTS = {
       reportShape: `${REPORT_BASE}, findings: Finding[] }`,
       capabilities: ['run.read', 'run.info', 'git.sliceDiff', 'history.forDiff', 'history.why', 'checks.results', 'dispatch.report'],
     },
-    crossexam: {
-      t3Role: 'review', isolation: 'shared', summary: "Confirm or dispute the other reviewer's findings; add anything both missed.",
-      reportShape: `${REPORT_BASE}, responses: { findingId: string, stance: 'confirm' | 'dispute', reason: string }[], findings: Finding[] /* new only */ }`,
-      capabilities: ['run.read', 'run.info', 'git.sliceDiff', 'history.forDiff', 'dispatch.report'],
+    recheck: {
+      t3Role: 'review', isolation: 'shared', summary: 'Re-check your own open findings against the fixed stack; report only what is still open or newly broken by the fixes.',
+      reportShape: `${REPORT_BASE}, resolved: string[] /* ids of your findings that are fixed, or whose "no change needed" reason you accept */, findings: Finding[] /* still open (same id) or regressions from the fixes (new id) */ }`,
+      capabilities: ['run.read', 'run.info', 'git.sliceDiff', 'checks.results', 'dispatch.report'],
     },
   },
   'docs-writer': {
     default: {
-      t3Role: 'general', isolation: 'worktree', summary: 'Versioned feature doc (summary, diagrams, decisions, screenshots) as the top slice.',
+      t3Role: 'general', isolation: 'shared', summary: 'Versioned feature doc (summary, diagrams, decisions, screenshots) as the top slice.',
       reportShape: `${REPORT_BASE}, branch: string, headSha: string, docPath: string }`,
       capabilities: ['run.read', 'run.list', 'run.info', 'run.export', 'checks.run', 'dispatch.report'],
     },
@@ -199,7 +182,7 @@ export function sliceErrors(doc, env) {
         covered.add(tc);
       }
     }
-    if ((s.manualCases || []).length && s.ui !== true) errors.push(`${at}.manualCases needs ui: true (browser-only cases are checked by the manual tester on user-visible slices)`);
+    if ((s.manualCases || []).length && s.ui !== true) errors.push(`${at}.manualCases needs ui: true (browser-only cases are walked by the manual tester and belong to the slice that makes them visible)`);
   });
   const missing = env.testCases.filter(tc => !covered.has(tc));
   if (missing.length) errors.push(`Every test case must be assigned to a slice; unassigned: ${missing.join(', ')}`);

@@ -77,7 +77,7 @@ export function validateContract(c) {
       for (const k of Object.keys(a)) if (!APP_KEYS.has(k)) warnings.push(`app: unknown key "${k}"`);
     }
   }
-  if (c.docs !== undefined && (typeof c.docs !== 'object' || (c.docs.dir !== undefined && typeof c.docs.dir !== 'string'))) errors.push('"docs" must be { "dir": "docs/features" }');
+  if (c.docs !== undefined && (typeof c.docs !== 'object' || (c.docs.dir !== undefined && typeof c.docs.dir !== 'string') || (c.docs.enabled !== undefined && typeof c.docs.enabled !== 'boolean'))) errors.push('"docs" must be { "enabled": true, "dir": "docs/features" } (the docs slice is off unless enabled)');
   return { errors, warnings };
 }
 

@@ -16,7 +16,7 @@ You are a senior engineer curating context for everyone downstream: the architec
 
 ## Where to look, in this order
 
-1. **Requirements** in your inputs. Extract the domain words, screens, entities and roles involved. These drive every search below.
+1. **The brief** in your inputs (you run alongside the product manager, so there are no requirements yet; do not wait for or read `requirements.md`). Extract the domain words, screens, entities and roles involved. These drive every search below. Where the brief is vague, cover the likely readings rather than guessing one.
 2. **Repo conventions**: `AGENTS.md`, `CLAUDE.md`, root and area READMEs, contributing guides, lint and test configs, and the repo contract (`.orchestrate/factory.json`), which says how the repo is set up, checked and run. Record only the rules this feature will exercise.
 3. **In-repo docs**: list the docs folders and apply judgment. Likely useful: pattern docs, cross-cutting guides (testing, auth, data access, sanitisation), area docs matching the feature domain. Likely noise: screenshots, dated plan files for other tickets, one-off PRDs for unrelated features, env-var references unless config is in scope.
 4. **Canonical code**: find 2-4 existing features closest to this one and cite the exact files. The architect spot-reads these to confirm patterns before designing. Prefer the nearest analogue over the most elegant one.
