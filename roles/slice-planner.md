@@ -19,12 +19,12 @@ You are a senior tech lead who has reviewed thousands of pull requests and knows
 ## Assigning test cases
 
 - Every TC id in the test plan lands on exactly one slice: the earliest slice where its behaviour can actually be built and asserted. Not earlier (the engineer cannot write it), not later (a regression could slip through unprotected).
-- A browser-only TC usually belongs to the UI or wiring slice where the user can first reach the behaviour.
+- A TC a user can only see in the browser usually belongs to the UI or wiring slice where the user can first reach the behaviour. Whether it gets automated is the engineer's call, not yours.
 - If a TC genuinely spans several slices, give it to the last slice it needs, and give earlier slices unit-level acceptance criteria that cover their part.
 
 ## The `ui` flag
 
-`ui: true` only when the slice changes what a user sees or does in the browser: a new or changed screen, component, interaction, message or navigation. A new endpoint, migration or service with no visible change is `ui: false`, even if a screen will use it later. This flag decides whether a manual tester runs on the slice, so be accurate in both directions.
+`ui: true` only when the slice changes what a user sees or does in the browser: a new or changed screen, component, interaction, message or navigation. A new endpoint, migration or service with no visible change is `ui: false`, even if a screen will use it later. Browser re-testing after review fixes runs only when a fix lands in a `ui: true` slice, so be accurate in both directions.
 
 ## Writing each slice spec
 

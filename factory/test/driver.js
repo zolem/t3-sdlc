@@ -185,7 +185,10 @@ export function simulatedChildren({ call, runId, plan }) {
         const chk = await call('checks.run', { runId: runId(), dispatchId: id, cwd: wt }, wt);
         assert.equal(chk.ok, true, JSON.stringify(chk.checks));
         git(wt, ['switch', '-q', '--detach']);
-        return report(id, { branch: s.branch, headSha: chk.sha });
+        // Automate cases whose id appears in the slice's test files; report the rest as manual-only.
+        const text = Object.entries(spec.files).filter(([f]) => /test/.test(f)).map(([, c]) => c).join('\n');
+        const tests = s.testCases.map((/** @type {string} */ tc) => (text.includes(tc) ? { id: tc, automated: true, where: 'test/' } : { id: tc, automated: false, why: 'no UI test setup' }));
+        return report(id, { branch: s.branch, headSha: chk.sha, tests });
       }
       case 'engineer:feature-fix': {
         const r = await info();

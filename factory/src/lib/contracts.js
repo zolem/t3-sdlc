@@ -84,7 +84,7 @@ export const CONTRACTS = {
   engineer: {
     build: {
       t3Role: 'implementation', isolation: 'shared', summary: 'Implement one slice on its branch with tests; checks must pass.',
-      reportShape: `${REPORT_BASE}, branch: string, headSha: string }`,
+      reportShape: `${REPORT_BASE}, branch: string, headSha: string, tests: ({ id: string, automated: true, where: string /* test file */ } | { id: string, automated: false, why: string })[] /* one per assigned test case */ }`,
       capabilities: ['run.read', 'checks.run', 'history.why', 'dispatch.report'],
     },
     'feature-fix': {
@@ -95,8 +95,8 @@ export const CONTRACTS = {
   },
   'manual-tester': {
     feature: {
-      t3Role: 'test', isolation: 'shared', summary: "Run the integrated feature (every repo at its finished stack) and walk every user story and browser-only test case.",
-      reportShape: `${REPORT_BASE}, findings: Finding[], screenshots: string[] }`,
+      t3Role: 'test', isolation: 'shared', summary: "Run the integrated feature (every repo at its finished stack) and run through every test case as a user would.",
+      reportShape: `${REPORT_BASE}, cases: { id: string, result: 'pass' | 'fail' | 'not-run', note?: string }[], findings: Finding[], screenshots: string[], noScreenshots?: string /* why, when the screenshot tool failed */ }`,
       capabilities: ['run.read', 'app.up', 'app.down', 'run.attach', 'run.write', 'dispatch.report'],
     },
   },
@@ -174,15 +174,13 @@ export function sliceErrors(doc, env) {
     if (env.repos && env.repos.length > 1 && !env.repos.includes(s.repo)) errors.push(`${at}.repo must name the repo this slice changes: one of ${env.repos.join(', ')}`);
     else if (s.repo !== undefined && env.repos && !env.repos.includes(s.repo)) errors.push(`${at}.repo "${s.repo}" is not in this run (${env.repos.join(', ')})`);
     for (const d of s.dependsOn || []) if (!(Number.isInteger(d) && d >= 1 && d < s.n)) errors.push(`${at}.dependsOn may only list earlier slice numbers`);
-    for (const key of ['testCases', 'manualCases']) {
-      if (s[key] !== undefined && !Array.isArray(s[key])) errors.push(`${at}.${key} must be an array`);
-      for (const tc of s[key] || []) {
-        if (!env.testCases.includes(tc)) errors.push(`${at}.${key} has "${tc}" which is not in test-plan.md`);
-        if (covered.has(tc)) errors.push(`${tc} is assigned more than once`);
-        covered.add(tc);
-      }
+    if (s.manualCases !== undefined) errors.push(`${at}.manualCases is gone: put every case in testCases (the engineer decides what to automate; the manual tester runs through every case)`);
+    if (s.testCases !== undefined && !Array.isArray(s.testCases)) errors.push(`${at}.testCases must be an array`);
+    for (const tc of s.testCases || []) {
+      if (!env.testCases.includes(tc)) errors.push(`${at}.testCases has "${tc}" which is not in test-plan.md`);
+      if (covered.has(tc)) errors.push(`${tc} is assigned more than once`);
+      covered.add(tc);
     }
-    if ((s.manualCases || []).length && s.ui !== true) errors.push(`${at}.manualCases needs ui: true (browser-only cases are walked by the manual tester and belong to the slice that makes them visible)`);
   });
   const missing = env.testCases.filter(tc => !covered.has(tc));
   if (missing.length) errors.push(`Every test case must be assigned to a slice; unassigned: ${missing.join(', ')}`);

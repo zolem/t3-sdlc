@@ -11,7 +11,8 @@ function sliceRef(run, n) {
   if (n === 'docs') return { repo: run.docs.repo, branch: run.docs.branch, base: run.docs.baseRef, testCases: [] };
   const s = run.slices.find((/** @type {any} */ x) => x.n === Number(n));
   if (!s) throw new Error(`No slice ${n}`);
-  return { repo: s.repo, branch: s.branch, base: s.baseRef, testCases: s.testCases || [] };
+  // Traceability covers the cases the engineer reported as automated (none yet while the slice is being built).
+  return { repo: s.repo, branch: s.branch, base: s.baseRef, testCases: (s.tests || []).filter((/** @type {any} */ t) => t.automated).map((/** @type {any} */ t) => t.id) };
 }
 
 /** @type {import('../registry.js').ModuleDef} */

@@ -5,6 +5,7 @@
 import { contractFor, findingErrors, sliceErrors, testCaseIds } from './contracts.js';
 import { explainerErrors } from './explainer.js';
 import { checkedOutBranches, git, tryRef } from './git.js';
+import { BUILTINS } from './checks.js';
 
 /**
  * @param {{ run: any, dispatch: any, report: any, files: { exists: (rel: string) => boolean, read: (rel: string) => string } }} p
@@ -82,11 +83,31 @@ export function validateReport({ run, dispatch, report, files }) {
       if (!slice) break;
       if (report.branch !== slice.branch) errors.push(`branch must be "${slice.branch}"`);
       const r = branchChecks(slice.branch, report.headSha, slice.baseRef, slice.repo);
+      // The engineer decides what to automate; every assigned case needs a call, and automated ones must be in the tests.
+      const tests = Array.isArray(report.tests) ? report.tests : null;
+      if (!tests) errors.push(`tests must list every assigned test case (${(slice.testCases || []).join(', ') || 'none'}) as { id, automated: true, where } or { id, automated: false, why }`);
+      else {
+        const given = new Set(tests.map((/** @type {any} */ t) => t?.id));
+        const missing = (slice.testCases || []).filter((/** @type {string} */ id) => !given.has(id));
+        if (missing.length) errors.push(`tests is missing assigned case(s): ${missing.join(', ')}`);
+        for (const t of tests) {
+          if (!(slice.testCases || []).includes(t?.id)) errors.push(`tests has "${t?.id}", which is not assigned to slice ${slice.n}`);
+          else if (t.automated === true && !t.where) errors.push(`tests ${t.id}: say where the automated test is (where: "test/file.test.ts")`);
+          else if (t.automated === false && !t.why) errors.push(`tests ${t.id}: say why it is not automated (why: "…")`);
+          else if (typeof t.automated !== 'boolean') errors.push(`tests ${t.id}: automated must be true or false`);
+        }
+        const automated = tests.filter((/** @type {any} */ t) => t?.automated === true).map((/** @type {any} */ t) => t.id);
+        if (r && automated.length) {
+          const trace = BUILTINS.traceability.run({ cwd: rootOf(slice.repo), base: r.parentSha || slice.baseRef, head: r.actual, args: [], testCases: automated });
+          if (!trace.ok) errors.push(`${trace.summary}. Put the TC id in the name of the test that asserts it, or report the case as not automated with a reason.`);
+        }
+      }
       if (r && errors.length === 0) {
         effects.push(run2 => {
           const s = run2.slices.find((/** @type {any} */ x) => x.n === slice.n);
           s.headSha = r.actual;
           s.parentSha ??= r.parentSha;
+          s.tests = tests;
         });
       }
       break;
@@ -132,8 +153,20 @@ export function validateReport({ run, dispatch, report, files }) {
     }
     case 'manual-tester:feature': {
       errors.push(...findingErrors(report.findings));
-      if (!Array.isArray(report.screenshots) || report.screenshots.length === 0) errors.push('screenshots must list at least one run path saved with factory.run.attach (evidence for reviewers and the PR)');
-      else for (const p of report.screenshots) if (!files.exists(p)) errors.push(`screenshot "${p}" is not in the run folder; save it with factory.run.attach({ runId, from: screenshotPath, as: "screenshots/<name>.png" })`);
+      const shots = Array.isArray(report.screenshots) ? report.screenshots : [];
+      if (!shots.length && !report.noScreenshots) errors.push('screenshots must list at least one run path saved with factory.run.attach; if the screenshot tool kept failing, say so in noScreenshots instead');
+      for (const p of shots) if (!files.exists(p)) errors.push(`screenshot "${p}" is not in the run folder; save it with factory.run.attach({ runId, from: screenshotPath, as: "screenshots/<name>.png" })`);
+      for (const p of shots) if (typeof p === 'string' && !p.startsWith(`screenshots/${dispatch.id}/`)) errors.push(`screenshot "${p}" is not from this run-through; attach it under screenshots/${dispatch.id}/`);
+      if (!Array.isArray(report.cases)) errors.push('cases must list a result for each test case you ran: { id, result: "pass" | "fail" | "not-run", note }');
+      else {
+        for (const c of report.cases) if (!['pass', 'fail', 'not-run'].includes(c?.result)) errors.push(`cases ${c?.id}: result must be pass, fail or not-run`);
+        const recheck = dispatch.inputs.some((/** @type {any} */ i) => i.path.startsWith('reviews/'));
+        if (!recheck && files.exists('test-plan.md')) {
+          const ran = new Set(report.cases.map((/** @type {any} */ c) => c?.id));
+          const missing = testCaseIds(files.read('test-plan.md')).filter(id => !ran.has(id));
+          if (missing.length) errors.push(`cases is missing: ${missing.join(', ')} (run through every test case, or report it as not-run with why)`);
+        }
+      }
       break;
     }
     case 'feature-reviewer:review':

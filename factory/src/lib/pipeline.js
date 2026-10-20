@@ -624,7 +624,7 @@ function initSlices(run, env) {
   const doc = JSON.parse(env.read('slices.json'));
   run.slices = doc.slices.map((/** @type {any} */ s) => ({
     n: s.n, slug: s.slug, title: s.title, layer: s.layer, ui: s.ui, repo: s.repo, dependsOn: s.dependsOn || [],
-    testCases: s.testCases || [], manualCases: s.manualCases || [], spec: s.spec,
+    testCases: s.testCases || [], spec: s.spec,
     phase: 'build', headSha: null,
   }));
   assignBranches(run);
