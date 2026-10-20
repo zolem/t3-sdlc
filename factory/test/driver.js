@@ -166,8 +166,15 @@ export function simulatedChildren({ call, runId, plan }) {
         for (const s of plan.slices) await w(s.spec, `# ${s.title}`);
         await w('slices.json', JSON.stringify({ slices: plan.slices.map((/** @type {any} */ { files, ...s }) => s) }));
         return report(id);
-      case 'explainer:plan': await w('explainers/plan.html', '<html><body>plan</body></html>'); return report(id);
-      case 'explainer:stack': await w('explainers/stack.html', '<html><body>stack</body></html>'); return report(id);
+      case 'explainer:plan':
+      case 'explainer:stack': {
+        const tcs = plan.slices.flatMap((/** @type {any} */ x) => [...x.testCases, ...(x.manualCases || [])]);
+        const diagrams = [{ title: 'Main flow', before: 'sequenceDiagram\n  U->>W: open\n  W-->>U: list', after: 'sequenceDiagram\n  U->>W: open\n  W->>A: GET\n  A-->>W: data\n  W-->>U: list' }];
+        const slices = plan.slices.map((/** @type {any} */ x) => ({ n: x.n, story: 'unlocks the next slice', whatChanged: 'adds it', whyThisWay: 'per architecture', verify: ['the edge case'] }));
+        const tests = tcs.map((/** @type {string} */ tc) => ({ id: tc, what: 'it works', why: 'it could break' }));
+        await w(`explainers/${mode}.json`, JSON.stringify(mode === 'plan' ? { intent: 'i', outcome: 'o', diagrams, slices, tests } : { built: 'b', risk: { level: 2, why: 'small' }, diagrams, slices, tests }));
+        return report(id);
+      }
       case 'engineer:build': {
         const n = Number(id.match(/slice-(\d+)/)[1]);
         const s = (await info()).slices.find((/** @type {any} */ x) => x.n === n);

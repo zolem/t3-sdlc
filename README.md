@@ -17,7 +17,7 @@ You ──orchestrate──▶  foreman thread ── plans, gates, cross-repo r
 ## How a run flows
 
 1. **Plan:** product-manager ∥ context-curator → architect ∥ qa-analyst → slice-planner → explainer.
-2. **Gate 1:** you approve the plan or request changes. The plan is shown as an HTML page in the thread: plain language first, with an engineer section underneath.
+2. **Gate 1:** you approve the plan or request changes. The plan is shown as an HTML page in the thread: before/after sequence and flow diagrams of how the system changes, the slices in order with what to verify in each, and every test with why it exists (never test code). The explainer only writes the judgment calls and Mermaid; the factory renders the diagrams offline and fills in everything it already knows.
 3. **Build, in one thread per repo:** the foreman launches a T3 thread for each repo, in one worktree that every step for that repo shares, one at a time. Each slice is one stacked PR, built in dependency order (table → endpoint → UI), even across repos.
    - The engineer implements the slice and self-reviews it against the spec.
    - `checks.run` (lint, types, tests…) must pass. Engineers cannot report done without it. There is no per-slice review.
@@ -26,7 +26,7 @@ You ──orchestrate──▶  foreman thread ── plans, gates, cross-repo r
    - Each reviewer re-checks only its own findings against what changed. The browser walk re-runs only if a fix touched a UI slice or validation had failed.
    - Still blocked after the fix round (`maxFeatureFixRounds`, default 1)? You choose: accept and continue with the findings shown as open, one more round, or abort.
 5. **Docs (opt-in):** with `"docs": { "enabled": true }` in the primary repo's `.orchestrate/factory.json`, a versioned feature doc (summary, diagrams, screenshots) becomes the top slice.
-6. **Gate 2:** you review the PR stack walkthrough, then approve or request changes.
+6. **Gate 2:** you review the PR stack page (same template: risk, checks and review status, before/after diagrams, what to verify per PR, fixes made after review, screenshots, tests), then approve or request changes.
 7. **Publish:** draft PRs, one per slice, each based on the one before in its repo. With several repos, each repo gets its own stack and the stacks are cross-linked. PRs are linked to your T3 thread.
 
 The order, retries, fallbacks and gates live in code (`factory/src/lib/pipeline.js`), not in a prompt. The orchestrator only carries out the actions the factory returns.

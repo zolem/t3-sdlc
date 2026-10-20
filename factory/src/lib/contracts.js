@@ -71,13 +71,13 @@ export const CONTRACTS = {
   },
   explainer: {
     plan: {
-      t3Role: 'design', isolation: 'shared', summary: 'Planning docs → one HTML page a non-technical reader can follow, with technical depth below.',
-      outputs: ['explainers/plan.html'], reportShape: `${REPORT_BASE} }`,
+      t3Role: 'design', isolation: 'shared', summary: 'Planning docs → the judgment calls and before/after diagrams the factory renders into the plan page.',
+      outputs: ['explainers/plan.json'], reportShape: `${REPORT_BASE} }`,
       capabilities: ['run.read', 'run.write', 'run.list', 'dispatch.report'],
     },
     stack: {
-      t3Role: 'design', isolation: 'shared', summary: 'Finished slices → HTML walkthrough of the PR stack in dependency order.',
-      outputs: ['explainers/stack.html'], reportShape: `${REPORT_BASE} }`,
+      t3Role: 'design', isolation: 'shared', summary: 'Finished slices → what to verify in each PR and before/after diagrams the factory renders into the stack page.',
+      outputs: ['explainers/stack.json'], reportShape: `${REPORT_BASE} }`,
       capabilities: ['run.read', 'run.write', 'run.list', 'run.info', 'git.sliceDiff', 'dispatch.report'],
     },
   },

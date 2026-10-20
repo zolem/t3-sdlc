@@ -3,6 +3,7 @@
 // returned to the child as errors so it keeps working instead of ending early.
 
 import { contractFor, findingErrors, sliceErrors, testCaseIds } from './contracts.js';
+import { explainerErrors } from './explainer.js';
 import { checkedOutBranches, git, tryRef } from './git.js';
 
 /**
@@ -66,9 +67,14 @@ export function validateReport({ run, dispatch, report, files }) {
     case 'explainer:stack': {
       const out = contract.outputs?.[0];
       if (out && files.exists(out)) {
-        const html = files.read(out);
-        if (!/<(html|body|main|section|div)\b/i.test(html)) errors.push(`${out} does not look like an HTML document`);
-        if (html.length > 480_000) errors.push(`${out} is ${html.length} bytes; keep it under 480 KB (link screenshots by run path instead of base64-inlining many)`);
+        let doc;
+        try {
+          doc = JSON.parse(files.read(out));
+        } catch (err) {
+          errors.push(`${out} is not valid JSON: ${err instanceof Error ? err.message : err}`);
+          break;
+        }
+        errors.push(...explainerErrors(dispatch.mode, doc, { run, exists: files.exists, read: files.read, list: () => [], abs: rel => rel }).map(e => `${out}: ${e}`));
       }
       break;
     }
