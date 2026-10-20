@@ -1,13 +1,17 @@
 // @ts-check
 // The SDLC pipeline as a deterministic state machine, split into scopes:
 //
-//   foreman   one thread per run (where the user typed /orchestrate). Plans the
-//             whole feature, owns both human gates, the cross-repo feature review
-//             and publishing. It never builds.
-//   <repo>    one T3 thread per repo, launched by the foreman in a worktree of that
-//             repo. Every child it starts works in that one worktree, one at a
-//             time: it builds the repo's slices, applies fixes, writes docs
-//             (primary repo, when enabled), then idles until the foreman asks for more.
+//   desk      the user's thread (where they typed "orchestrate"). It starts the run,
+//             launches the run thread, and only hears about what a person decides:
+//             the gates, blocks and the finish. It never orchestrates.
+//   foreman   the run thread, on a cheap coordinator model. Plans the whole feature,
+//             runs the cross-repo feature review and publishing, and also drives the
+//             primary repo. It never builds and never talks to the user.
+//   <repo>    one scope per repo: builds its slices, applies fixes, writes docs
+//             (primary repo, when enabled), then idles until the foreman asks for
+//             more. The run thread drives the primary repo itself; every other repo
+//             gets its own T3 thread in a worktree of that repo. Every child works in
+//             its repo's one worktree, one at a time.
 //
 // Every thread calls next({ runId, repo? }) and carries out only its own scope's
 // actions. Threads coordinate through an outbox of short messages the factory
@@ -41,6 +45,8 @@ export function docsEnabled(run) {
 }
 
 export const FOREMAN = 'foreman';
+/** The user's thread. It only hears about decisions; the run thread (foreman scope) does the orchestration. */
+export const DESK = 'desk';
 
 /**
  * @typedef {object} Env
@@ -454,18 +460,52 @@ function routeFixes(run, findings, keyPrefix, title, filePrefix, env) {
  */
 export function consolidate(parts, carried = []) {
   // Ids are only unique per report, so qualify them by source ("a:R1", "validate:V2"); re-checks keep them.
-  const all = parts.flatMap(({ source, d }) => (d.report.findings || []).map((/** @type {any} */ f) => ({ ...f, id: String(f.id).startsWith(`${source}:`) ? f.id : `${source}:${f.id}`, source, raisedBy: d.target.model })));
+  const taken = new Set(carried.map(f => f.id));
+  const all = parts.flatMap(({ source, d }) => (d.report.findings || []).map((/** @type {any} */ f) => {
+    let id = String(f.id).startsWith(`${source}:`) ? String(f.id) : `${source}:${f.id}`;
+    // A re-check's new regression can reuse an id already carried as a minor finding.
+    for (let n = 2; taken.has(id); n++) id = `${String(id).replace(/~\d+$/, '')}~${n}`;
+    taken.add(id);
+    return { ...f, id, source, raisedBy: d.target.model };
+  }));
   const blocking = all.filter(f => BLOCKING.has(f.severity) && !f.preexisting);
   const validate = parts.find(p => p.source === 'validate');
   return { blocking, minor: [...carried, ...all.filter(f => !blocking.includes(f))], screenshots: validate?.d.report.screenshots || [] };
 }
 
 /** @param {any} run @param {string} scope */
+/** @param {any} run @param {string} scope */
+export function threadOf(run, scope) {
+  if (scope === DESK) return run.desk?.threadId;
+  if (scope === FOREMAN) return run.foreman?.threadId;
+  return run.repos[scope]?.thread?.threadId;
+}
+
+/** @param {any} run @param {string} scope */
 function outboxFor(run, scope) {
   return (run.outbox || []).filter((/** @type {any} */ m) => !m.sent && m.from === scope).map((/** @type {any} */ m) => {
-    const threadId = m.to === FOREMAN ? run.foreman?.threadId : run.repos[m.to]?.thread?.threadId;
-    return threadId ? { type: 'notify', id: m.id, to: m.to, threadId, message: m.message, how: `t3_thread_send({ threadId: "${threadId}", message }), then factory.orchestrator.sent({ runId, id: "${m.id}" }).` } : null;
+    const threadId = threadOf(run, m.to);
+    // The run thread drives the foreman and the primary repo: no need to message itself.
+    if (threadId && threadId === threadOf(run, m.from)) {
+      m.sent = true;
+      return null;
+    }
+    return threadId ? { type: 'notify', id: m.id, to: m.to, threadId, message: m.message } : null;
   }).filter(Boolean);
+}
+
+/**
+ * Tell the user's thread once that something needs a person.
+ * @param {any} run @param {string} key @param {string} what
+ */
+function tellDesk(run, key, what) {
+  if (!run.desk) return;
+  run.deskEvents ??= {};
+  if (run.deskEvents[key]) return;
+  run.deskEvents[key] = now();
+  run.outbox ??= [];
+  const id = `m${run.outbox.length + 1}`;
+  run.outbox.push({ id, from: FOREMAN, to: DESK, message: `${what} Call factory.orchestrator.next({ runId: "${run.id}", scope: "desk" }).`, sent: false, at: now() });
 }
 
 /** @param {any} run @param {any} d */
@@ -473,9 +513,49 @@ function dispatchAction(run, d) {
   return {
     type: 'dispatch',
     dispatchId: d.id,
+    scope: d.scope || FOREMAN,
     title: d.title,
     delegate: { title: d.title, task: taskText(run.id, d.id, d.role, d.mode), target: d.target, isolation: d.isolation, role: d.t3Role, mode: 'async', clientRequestId: `${run.id}:${d.id}` },
   };
+}
+
+/**
+ * The user's thread: launch the run thread, then only gates, blocks and the finish.
+ * Page URLs are filled in by the orchestrator module (it serves the run's pages).
+ * @param {any} run @param {any[]} out
+ */
+function deskActions(run, out) {
+  if (!run.foreman?.threadId) {
+    const p = primaryRepo(run);
+    return [...out, {
+      type: 'launch-driver',
+      projectRoot: p.root,
+      baseBranch: p.baseBranch,
+      title: `${run.title} · run`,
+      ...(run.coordinator ? { modelSelection: run.coordinator } : {}),
+      message: `You are the run thread for t3-sdlc run ${run.id}. Run \`${cliCommand()} skill orchestrate-run\` and follow it yourself in this thread. The user's thread is ${run.desk.threadId}.`,
+      how: `Find the T3 project whose workspaceRoot is "${p.root}" (t3_project_list). t3_thread_launch({ title, projectId, workspaceStrategy: { type: "worktree", baseRef: "${p.baseBranch}", startFromOrigin: false },${run.coordinator ? ' modelSelection,' : ''} runtimeMode: "full-access", message }). Then factory.orchestrator.launched({ runId, repo: "${p.name}", threadId, driver: true }).`,
+    }];
+  }
+  const blocked = Object.values(run.blocked || {});
+  if (blocked.length) {
+    return [...out, ...blocked.map((/** @type {any} */ b) => {
+      const options = b.kind === 'feature-rounds' ? ['accept', 'retry', 'abort'] : ['retry', 'abort'];
+      const help = b.kind === 'feature-rounds' ? ' accept = continue to the PR stack with these findings shown as open; retry = one more fix round; abort = stop the run.' : '';
+      return { type: 'blocked', scope: b.scope, reason: b.reason, options, how: `Tell the user in one or two lines and ask: ${options.join(', ')}.${help} Then factory.orchestrator.decide({ runId, gate: "blocked", scope: "${b.scope}", decision }).` };
+    })];
+  }
+  for (const gate of ['plan', 'stack']) {
+    if (run.cursor === `gate:${gate}`) {
+      const g = run.gates[gate][run.gates[gate].length - 1];
+      return [...out, { type: 'gate', gate, round: g.round, htmlPath: g.htmlPath, how: `Open the page for the user: preview_open({ url, open: true }). Then send one line with the link, e.g. "${gate === 'plan' ? 'Plan' : 'PR stack'} ready for review: <url>. Reply approve, or say what to change." Do not summarise the page. When the user answers, factory.orchestrator.decide({ runId, gate: "${gate}", decision: "approve" | "changes", notes }).` }];
+    }
+  }
+  if (run.cursor === 'done') {
+    const threads = [run.foreman?.threadId, ...Object.values(run.repos).map((/** @type {any} */ r) => r.thread?.threadId)].filter((t, i, a) => t && a.indexOf(t) === i);
+    return [...out, { type: 'done', threads, how: `Call factory.orchestrator.summary({ runId }) and show it.${run.settings.costReport === false ? '' : ' If it lists a cost page URL, open it with preview_open({ url, open: true }).'} Then settle the run's threads (t3_thread_organize action "settle" for each id in threads).` }];
+  }
+  return [...out, { type: 'idle', reason: 'the run thread is working', how: 'End your turn. You are messaged when something needs the user.' }];
 }
 
 /**
@@ -487,13 +567,14 @@ export function actions(run, scope = FOREMAN) {
   const pending = run.dispatches.filter((/** @type {any} */ d) => d.status === 'pending' && (d.scope || FOREMAN) === scope).map((/** @type {any} */ d) => dispatchAction(run, d));
   const running = run.dispatches.filter((/** @type {any} */ d) => d.status === 'started' && (d.scope || FOREMAN) === scope);
 
+  if (scope === DESK) return deskActions(run, out);
   if (scope !== FOREMAN) {
     const st = rstate(run, scope);
     if (run.status === 'aborted' || st.phase === 'done') return [...out, { type: 'finished', how: 'Your part of the run is over. Settle any of your child threads that are still unsettled, reply with one line, and stop.' }];
     if (run.blocked?.[scope]) return [...out, { type: 'idle', reason: `blocked: ${run.blocked[scope].reason}`, how: 'The foreman has been told and will ask the user. End your turn; you will be messaged when to continue.' }];
     if (pending.length) return [...out, ...pending];
     if (st.phase === 'checkout' && !running.length) {
-      return [...out, { type: 'checkout', how: `Point your own worktree at the finished ${scope} stack for whole-feature checks: factory.workspace.prepare({ runId: "${run.id}", repo: "${scope}", cwd: <your thread's checkout path> }), then call factory.orchestrator.next({ runId, repo: "${scope}" }).` }];
+      return [...out, { type: 'checkout', repo: scope, how: `Point your own worktree at the finished ${scope} stack for whole-feature checks: factory.workspace.prepare({ runId: "${run.id}", repo: "${scope}", cwd: <your thread's checkout path> }), then call factory.orchestrator.next({ runId, repo: "${scope}" }).` }];
     }
     if (running.length) return [...out, { type: 'wait', running: running.map((/** @type {any} */ d) => ({ dispatchId: d.id, taskId: d.taskId, title: d.title })) }];
     if (st.waitingOn?.length) return [...out, { type: 'idle', reason: `waiting on slice(s) ${st.waitingOn.join(', ')} in another repo`, how: 'End your turn; you will be messaged when the dependency is done.' }];
@@ -501,6 +582,24 @@ export function actions(run, scope = FOREMAN) {
   }
 
   const blocked = Object.values(run.blocked || {});
+  if (run.desk) {
+    // Things a person decides go to the user's thread; the run thread waits.
+    if (blocked.length) {
+      for (const b of blocked) tellDesk(run, `blocked:${b.scope}:${b.at}`, `Run ${run.id} is blocked (${b.scope}): ${b.reason}`);
+      return [...outboxFor(run, scope), { type: 'idle', reason: 'waiting for the user', how: 'End your turn. You will be messaged when the user decides.' }];
+    }
+    for (const gate of ['plan', 'stack']) {
+      if (run.cursor === `gate:${gate}`) {
+        const g = run.gates[gate][run.gates[gate].length - 1];
+        tellDesk(run, `gate:${gate}:${g.round}`, `The ${gate === 'plan' ? 'plan' : 'PR stack'} is ready for review (round ${g.round}).`);
+        return [...outboxFor(run, scope), { type: 'idle', reason: 'waiting for the user', how: 'End your turn. You will be messaged when the user decides.' }];
+      }
+    }
+    if (run.cursor === 'done') {
+      tellDesk(run, 'done', `Run ${run.id} is ${run.status === 'aborted' ? 'aborted' : 'finished'}.`);
+      return [...outboxFor(run, scope), { type: 'finished', how: 'The run is over. Settle your child threads that are still unsettled, reply with one line, and stop.' }];
+    }
+  }
   if (blocked.length) {
     return [...out, ...blocked.map((/** @type {any} */ b) => {
       const options = b.kind === 'feature-rounds' ? ['accept', 'retry', 'abort'] : ['retry', 'abort'];
@@ -509,7 +608,7 @@ export function actions(run, scope = FOREMAN) {
     })];
   }
   if (run.cursor === 'done') return [...out, { type: 'done', how: `Call factory.orchestrator.summary({ runId }) and show it.${run.settings.costReport === false ? '' : ' If the summary includes a Cost section with a report path, show that page too: factory.run.read({ runId, path: "reports/cost.html" }) and html_render it.'} Settle this run’s repo threads and your own finished child threads.` }];
-  if (run.cursor === 'publish') return [...out, { type: 'publish', how: 'The user approved the PR stack. Call factory.publish.stack({ runId }), link every returned PR URL with link_pull_request, then call factory.orchestrator.next({ runId }).' }];
+  if (run.cursor === 'publish') return [...out, { type: 'publish', how: `The user approved the PR stack. Call factory.publish.stack({ runId }), link every returned PR URL with link_pull_request({ url${run.desk ? `, threadId: "${run.desk.threadId}"` : ''} }), then call factory.orchestrator.next({ runId }).` }];
   for (const gate of ['plan', 'stack']) {
     if (run.cursor === `gate:${gate}`) {
       const g = run.gates[gate][run.gates[gate].length - 1];
@@ -523,7 +622,8 @@ export function actions(run, scope = FOREMAN) {
     baseBranch: run.repos[n].baseBranch,
     title: `${run.title} · ${n}`,
     message: `You are the repo thread for t3-sdlc run ${run.id}, repo ${n}. Run \`${cliCommand()} skill orchestrate-repo\` and follow it yourself in this thread. Never delegate the coordination to a child.`,
-    how: `Find the T3 project whose workspaceRoot is "${run.repos[n].root}" (t3_project_list). t3_thread_launch({ title, projectId, workspaceStrategy: { type: "worktree", baseRef: "${run.repos[n].baseBranch}", startFromOrigin: false }, message }). Then factory.orchestrator.launched({ runId, repo: "${n}", threadId }).`,
+    ...(run.coordinator ? { modelSelection: run.coordinator } : {}),
+    how: `Find the T3 project whose workspaceRoot is "${run.repos[n].root}" (t3_project_list). t3_thread_launch({ title, projectId, workspaceStrategy: { type: "worktree", baseRef: "${run.repos[n].baseBranch}", startFromOrigin: false },${run.coordinator ? ' modelSelection,' : ''} runtimeMode: "full-access", message }). Then factory.orchestrator.launched({ runId, repo: "${n}", threadId }).`,
   })) : [];
   if (pending.length || launches.length || out.length) return [...out, ...launches, ...pending];
   if (running.length) return [{ type: 'wait', running: running.map((/** @type {any} */ d) => ({ dispatchId: d.id, taskId: d.taskId, title: d.title })) }];
@@ -534,10 +634,18 @@ export function actions(run, scope = FOREMAN) {
 }
 
 /**
- * Apply a human decision (foreman only).
+ * Apply a human decision (the user's thread), then wake the run thread.
+ * @param {any} run @param {{ gate: string, decision: string, notes?: string, scope?: string, repos?: string[] }} args @param {Env} env
+ */
+export function decide(run, args, env) {
+  decideInner(run, args, env);
+  if (run.desk) notify(run, DESK, FOREMAN, `The user decided (${args.gate}: ${args.decision}). Call factory.orchestrator.next({ runId: "${run.id}" }).`, env);
+}
+
+/**
  * @param {any} run @param {{ gate: string, decision: string, notes?: string, scope?: string, repos?: string[] }} d @param {Env} env
  */
-export function decide(run, { gate, decision, notes, scope, repos }, env) {
+function decideInner(run, { gate, decision, notes, scope, repos }, env) {
   if (gate === 'blocked') {
     const key = scope || Object.keys(run.blocked || {})[0];
     const b = key && run.blocked?.[key];

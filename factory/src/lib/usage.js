@@ -278,8 +278,10 @@ export function measureRun(run, opts = {}) {
   const paths = usagePaths(opts.paths);
   const started = (run.dispatches || []).filter((/** @type {any} */ d) => d.startedAt);
   const coordinators = [
-    ...(run.foreman?.threadId ? [{ id: 'foreman', label: 'Foreman', threadId: run.foreman.threadId }] : []),
-    ...Object.values(run.repos || {}).filter((/** @type {any} */ r) => r.thread?.threadId).map((/** @type {any} */ r) => ({ id: `repo:${r.name}`, label: `Repo thread · ${r.name}`, threadId: r.thread.threadId })),
+    ...(run.desk?.threadId ? [{ id: 'desk', label: 'Your thread', threadId: run.desk.threadId }] : []),
+    ...(run.foreman?.threadId && run.foreman.threadId !== run.desk?.threadId ? [{ id: 'foreman', label: run.desk ? 'Run thread' : 'Foreman', threadId: run.foreman.threadId }] : []),
+    // The run thread also drives the primary repo; count each thread once.
+    ...Object.values(run.repos || {}).filter((/** @type {any} */ r) => r.thread?.threadId && r.thread.threadId !== run.foreman?.threadId).map((/** @type {any} */ r) => ({ id: `repo:${r.name}`, label: `Repo thread · ${r.name}`, threadId: r.thread.threadId })),
   ];
   const { map, ok: dbOk } = sessionsForThreads([...started.map((/** @type {any} */ d) => d.childThreadId), ...coordinators.map(c => c.threadId)], paths);
   /** @type {ReturnType<typeof loadCursorCache> | undefined} */

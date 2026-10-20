@@ -1,8 +1,9 @@
 // @ts-check
-// End-to-end runs through the factory with simulated agents and real git:
-// the foreman plans, launches one thread per repo, repo threads build (checks are
-// the gate), the foreman reviews the whole feature once, routes fixes back, the
-// reviewers re-check, then docs (opt-in), gate, publish.
+// End-to-end runs through the factory with simulated agents and real git: the
+// user's thread starts a run thread, which plans, builds the primary repo (other
+// repos get their own threads; checks are the gate), reviews the whole feature
+// once, routes fixes back, re-checks, then docs (opt-in) and publish. The user's
+// thread only sees gates, blocks and the finish.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,11 +48,13 @@ test('single repo: foreman → one repo thread → feature fix routed back → r
     },
   });
 
-  assert.deepEqual(log.launches, ['notes'], 'every repo gets a thread, even a single one');
+  assert.deepEqual(log.launches, ['run(notes)'], 'one run thread drives a single-repo run');
+  assert.deepEqual([...new Set(log.deskActions)].sort(), ['done', 'gate', 'idle', 'launch-driver', 'notify'], 'the user\'s thread only launches, relays decisions and sees gates and the finish');
+  assert.ok(log.dispatches.every((/** @type {any} */ d) => d.thread === 'run'), 'every dispatch is started by the run thread');
   assert.equal(gates, 3, 'plan changes, plan approve, stack approve');
   const byId = Object.fromEntries(log.dispatches.map((/** @type {any} */ d) => [d.id, d]));
   assert.equal(byId['requirements'].scope, 'foreman');
-  assert.ok(log.dispatches.findIndex((/** @type {any} */ d) => d.id === 'context') < log.dispatches.findIndex((/** @type {any} */ d) => d.id === 'architecture.r1') && !byId['context'].inputs, 'curator runs alongside the PM');
+  assert.ok(log.dispatches.findIndex((/** @type {any} */ d) => d.id === 'context') < log.dispatches.findIndex((/** @type {any} */ d) => d.id === 'architecture.r1'), 'curator runs alongside the PM');
   assert.equal(byId['slice-1.build'].scope, 'notes');
   assert.equal(byId['slice-1.build'].isolation, 'shared', 'repo children share the repo thread worktree');
   assert.ok(!log.dispatches.some((/** @type {any} */ d) => /\.review\.v|\.validate\.v|slice-\d+\.fix/.test(d.id)), 'no per-slice review, validation or fix loop');
@@ -63,8 +66,10 @@ test('single repo: foreman → one repo thread → feature fix routed back → r
   assert.ok(!byId['requirements.r2'] && log.dispatches.filter((/** @type {any} */ d) => d.id.startsWith('context')).length === 1, 'plan changes do not redo intake');
 
   // The foreman only hears milestones.
-  const toForeman = log.notifies.filter((/** @type {any} */ n) => n.to === 'foreman').map((/** @type {any} */ n) => n.message);
-  assert.deepEqual(toForeman.map((/** @type {string} */ m) => m.split('.')[0]), ['notes: build done', 'notes: fixes done', 'notes: docs done']);
+  // The user's thread hears only about decisions; milestones between the run thread's own scopes are never sent.
+  const toDesk = log.notifies.filter((/** @type {any} */ n) => n.to === 'desk').map((/** @type {any} */ n) => n.message.split(' Call')[0]);
+  assert.deepEqual(toDesk, ['The plan is ready for review (round 1).', 'The plan is ready for review (round 2).', 'The PR stack is ready for review (round 1).', `Run ${runId} is finished.`]);
+  assert.ok(!log.notifies.some((/** @type {any} */ n) => n.to === 'foreman' && n.from !== 'desk'), 'the run thread never messages itself');
 
   const r1 = JSON.parse(await call('run.read', { runId, path: 'reviews/feature-r1.json' }));
   assert.deepEqual(r1.blocking.map((/** @type {any} */ f) => f.id), ['a:A1', 'b:B1'], 'ids are qualified by source so two reviewers can both use R1');
@@ -102,7 +107,7 @@ test('two repos: per-repo threads, cross-repo dependency, routed fixes, stacks p
   };
   const log = await drive({ call, runId, tmp, child: simulatedChildren({ call, runId: () => runId, tmp, plan }), gate: async () => ({ decision: 'approve' }) });
 
-  assert.deepEqual([...log.launches].sort(), ['api', 'web']);
+  assert.deepEqual(log.launches, ['run(web)', 'api'], 'the run thread drives the primary repo; other repos get their own thread');
   const byId = Object.fromEntries(log.dispatches.map((/** @type {any} */ d) => [d.id, d]));
   assert.equal(byId['slice-1.build'].scope, 'api');
   assert.equal(byId['slice-2.build'].scope, 'web');
@@ -160,7 +165,12 @@ test('a child that ends without a report is retried on the fallback model, then 
   initRepo(repo, { '.orchestrate/factory.json': JSON.stringify(CONTRACT) });
   const { call } = factory(tmp, repo);
   const { runId, actions } = await call('orchestrator.start', { repo, threadId: 'T', brief: 'Retry me', capabilities: CAPABILITIES, skip: SKIP });
-  assert.equal(actions[0].delegate.target.model, 'claude-sonnet-5-5');
+  assert.equal(actions[0].type, 'launch-driver');
+  assert.deepEqual(actions[0].modelSelection, { instanceId: 'claudeAgent', model: 'claude-haiku-5-5', options: { effort: 'low' } }, 'the run thread uses the coordinator model');
+  const first = await call('orchestrator.launched', { runId, repo: 'r', threadId: 'T-run', driver: true });
+  assert.equal(first.actions[0].type, 'idle', 'the user\'s thread is done until something needs a person');
+  const go = await call('orchestrator.next', { runId });
+  assert.equal(go.actions.find((/** @type {any} */ a) => a.dispatchId === 'requirements').delegate.target.model, 'claude-sonnet-5-5');
   await call('orchestrator.started', { runId, dispatchId: 'requirements', taskId: 'x1' });
   const retryOf = (/** @type {any} */ res) => res.actions.find((/** @type {any} */ a) => a.dispatchId?.startsWith('requirements'));
   let r = await call('orchestrator.finished', { runId, dispatchId: 'requirements', status: 'completed', summary: 'oops' });
@@ -170,10 +180,13 @@ test('a child that ends without a report is retried on the fallback model, then 
     await call('orchestrator.started', { runId, dispatchId: id, taskId: id });
     r = await call('orchestrator.finished', { runId, dispatchId: id, status: 'failed', summary: 'provider error' });
   }
-  assert.equal(r.actions[0].type, 'blocked');
-  assert.deepEqual(r.actions[0].options, ['retry', 'abort'], 'accept is only offered for open feature findings');
+  assert.ok(r.actions.some((/** @type {any} */ a) => a.type === 'notify' && a.to === 'desk'), 'the run thread tells the user\'s thread');
+  const desk = await call('orchestrator.next', { runId, scope: 'desk' });
+  const b = desk.actions.find((/** @type {any} */ a) => a.type === 'blocked');
+  assert.deepEqual(b.options, ['retry', 'abort'], 'accept is only offered for open feature findings');
   r = await call('orchestrator.decide', { runId, gate: 'blocked', scope: 'foreman', decision: 'retry' });
-  assert.equal(retryOf(r).dispatchId, 'requirements~4');
+  assert.ok(r.actions.some((/** @type {any} */ a) => a.type === 'notify' && a.threadId === 'T-run'), 'the decision wakes the run thread');
+  assert.equal(retryOf(await call('orchestrator.next', { runId })).dispatchId, 'requirements~4');
 });
 
 test('start: preflight blocks a dirty repo; an unroutable policy throws; threadId is required', async () => {
@@ -203,5 +216,7 @@ test('start: asks which policy targets are available, then routes from that shor
   const run = await call('orchestrator.start', { repo, threadId: 'T', brief: 'x', skip: SKIP, available });
   assert.deepEqual(run.unavailable, ['claudeAgent/claude-sonnet-5-5']);
   assert.equal(run.routing['product-manager'], 'codex/gpt-6.1-sol', 'falls back past the unavailable target');
-  assert.deepEqual(run.actions[0].delegate.target.options, { reasoningEffort: 'high' }, 'policy options pass through');
+  await call('orchestrator.launched', { runId: run.runId, repo: 'r', threadId: 'T-run', driver: true });
+  const go = await call('orchestrator.next', { runId: run.runId });
+  assert.deepEqual(go.actions.find((/** @type {any} */ a) => a.dispatchId === 'requirements').delegate.target.options, { reasoningEffort: 'high' }, 'policy options pass through');
 });

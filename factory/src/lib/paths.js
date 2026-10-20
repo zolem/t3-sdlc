@@ -41,6 +41,7 @@ export const SKILLS = {
   orchestrate: { linked: true },
   'orchestrate-setup': { linked: true },
   'generate-brief': { linked: true },
+  'orchestrate-run': { linked: false },
   'orchestrate-repo': { linked: false },
 };
 

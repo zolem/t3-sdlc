@@ -7,6 +7,7 @@
 
 import { renderMermaidSVG } from 'beautiful-mermaid';
 import { testCaseIds } from './contracts.js';
+import { THEME_FALLBACK } from './theme.js';
 
 /**
  * @typedef {{ run: any, exists: (rel: string) => boolean, read: (rel: string) => string, list: (prefix: string) => string[], abs: (rel: string) => string }} PageCtx
@@ -160,7 +161,7 @@ details{margin-top:24px}summary{cursor:pointer;color:var(--muted-foreground);fon
 `;
 
 /** @param {string} title @param {string} body */
-const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${CSS}</style></head><body>${body}</body></html>`;
+const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${THEME_FALLBACK}${CSS}</style></head><body>${body}</body></html>`;
 
 /** @param {any[]} diagrams */
 function diagramsHtml(diagrams) {

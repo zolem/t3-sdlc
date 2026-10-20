@@ -28,7 +28,7 @@ An orchestrate run starts with the same doctor. If something is missing it stops
 | Browser validation | `app`: a command that serves the app plus its URL | optional | user-facing slices are code-reviewed only, never exercised in a browser |
 | Publishing | a GitHub `origin` remote and `gh auth login` | optional | PRs are written to a dry-run plan instead |
 
-Optional stages ask before being skipped: the foreman shows the report, and you either set them up or continue without them.
+Optional stages ask before being skipped: your thread shows the report, and you either set them up or continue without them.
 
 The doctor checks that commands **resolve**, without running them:
 - npm/pnpm/yarn/bun scripts exist in `package.json`
@@ -81,7 +81,7 @@ The doctor checks that commands **resolve**, without running them:
 |---|---|
 | `ORCH_BASE_SHA`, `ORCH_HEAD_SHA` | The slice's parent commit and the commit being checked |
 | `ORCH_CHANGED_FILES` | Path to a file listing files changed by this slice, one per line. Lint only these if a full lint is slow. |
-| `ORCH_TEST_CASES` | Comma-separated test-case ids assigned to this slice |
+| `ORCH_TEST_CASES` | Comma-separated test-case ids the slice's engineer reported as automated (empty while the slice is first being built; the factory checks those claims when the engineer reports) |
 | `ORCH_SLICE`, `ORCH_RUN_ID` | Which slice and run is being checked |
 | `PATH` | Includes the `orchestrate` CLI |
 
@@ -93,7 +93,7 @@ The doctor checks that commands **resolve**, without running them:
 | `hygiene` | Added lines contain conflict markers, focused tests (`.only`, `fit`), or `debugger` |
 | `lockfile` | `package.json` dependencies changed without a lockfile change |
 | `migrations '<glob>' [--require-down]` | An existing migration was edited or deleted, or a new `.up.` migration has no matching `.down.` |
-| `traceability` | A test case assigned to the slice is not mentioned by any changed test file |
+| `traceability` | A test case the engineer reported as automated is not mentioned by any changed test file |
 | `changed-lines <lcov> [min]` | Coverage of executable added lines is below `min` (default 80). Source files missing from the report are listed as a warning. |
 
 They are plain commands, so you can run them in CI too. Write your own the same way: any script that exits non-zero on failure.
@@ -130,13 +130,13 @@ Put this in the repo you orchestrate from (the **primary** repo):
 
 How a multi-repo run works:
 - **Contracts:** every listed repo needs its own `.orchestrate/factory.json`, and each repo must be a T3 project. The doctor checks them all.
-- **Threads:** the thread you start in is the **foreman**. It plans the whole feature, then launches one T3 thread per repo, each in a worktree of its own repo. So T3 owns every worktree.
+- **Threads:** the thread you start in launches a **run thread** in a worktree of the primary repo. The run thread plans the whole feature and builds the primary repo, and launches one T3 thread per other repo, each in a worktree of its own repo. So T3 owns every worktree.
 - **Slices:** each slice changes exactly one repo. A slice that depends on a slice in another repo waits until that slice is done, and the finishing thread wakes it.
 - **Checks:** each repo thread's engineers run that repo's checks.
-- **Milestones:** repo threads send the foreman a one-line message only when a build, fix round or docs is done, or when they're blocked.
-- **Fixes:** the foreman's whole-feature review routes each finding to the repo thread that owns its slice.
+- **Milestones:** repo threads send the run thread a one-line message only when a build, fix round or docs is done, or when they're blocked.
+- **Fixes:** the run thread's whole-feature review routes each finding to the repo thread that owns its slice.
 - **PRs:** each repo gets its own PR stack, and the PR bodies link to the other repos' PRs.
-- **Browser validation:** each slice is tested against its own repo's `app`. The whole feature is tested with the workspace `app` (or the primary repo's), which runs with every repo thread's finished checkout passed as `ORCH_REPO_<NAME>` (for example `ORCH_REPO_API`).
+- **Browser validation:** the whole feature is tested with the workspace `app` (or the primary repo's), which runs with every repo thread's finished checkout passed as `ORCH_REPO_<NAME>` (for example `ORCH_REPO_API`).
 
 Single-repo runs work the same way, with one repo thread.
 

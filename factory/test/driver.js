@@ -17,6 +17,7 @@ for (const role of ['product-manager', 'context-curator', 'architect', 'qa-analy
   fs.writeFileSync(path.join(CONTENT, 'roles', `${role}.md`), `---\nversion: test\n---\nYou are the ${role}.\n`);
 }
 process.env.ORCHESTRATE_CONTENT = CONTENT;
+process.env.T3_SDLC_NO_SERVE = '1';
 const { Registry } = await import('../src/registry.js');
 const { loadModules } = await import('../src/modules/index.js');
 
@@ -75,49 +76,64 @@ export function factory(tmp, primaryRoot) {
 export async function drive({ call, runId, tmp, child, gate, blocked }) {
   /** @type {Record<string, string>} thread worktree per repo */
   const threadWt = {};
-  const log = { notifies: /** @type {any[]} */ ([]), launches: /** @type {string[]} */ ([]), dispatches: /** @type {any[]} */ ([]), publish: /** @type {any} */ (null) };
+  const log = { notifies: /** @type {any[]} */ ([]), launches: /** @type {string[]} */ ([]), dispatches: /** @type {any[]} */ ([]), publish: /** @type {any} */ (null), deskActions: /** @type {string[]} */ ([]) };
   let task = 0;
+  let driverLaunched = false;
   for (let pass = 0; pass < 400; pass++) {
     let progressed = false;
     const info = await call('run.info', { runId });
-    const scopes = ['foreman', ...Object.keys(info.repoState || {}).filter(r => info.repos.find((/** @type {any} */ x) => x.name === r) && threadWt[r])];
+    const others = Object.keys(info.repoState || {}).filter(r => threadWt[r] && r !== info.repos.find((/** @type {any} */ x) => x.primary).name);
+    // The user's thread, the run thread (foreman + primary repo), then other repo threads.
+    const scopes = [...(driverLaunched ? ['run'] : []), ...others, 'desk'];
     for (const scope of scopes) {
-      const res = await call('orchestrator.next', scope === 'foreman' ? { runId } : { runId, repo: scope });
+      const res = await call('orchestrator.next', scope === 'desk' ? { runId, scope: 'desk' } : scope === 'run' ? { runId } : { runId, repo: scope });
       for (const a of res.actions) {
+        if (scope === 'desk') log.deskActions.push(a.type);
         if (a.type === 'notify') {
           log.notifies.push({ from: scope, to: a.to, message: a.message });
           await call('orchestrator.sent', { runId, id: a.id });
           progressed = true;
-        } else if (a.type === 'launch') {
-          const wt = path.join(tmp, `thread-${a.repo}`);
+        } else if (a.type === 'launch-driver' || a.type === 'launch') {
+          const wt = path.join(tmp, `thread-${a.repo || 'run'}`);
           git(a.projectRoot, ['worktree', 'add', '-q', '--detach', wt, a.baseBranch]);
-          threadWt[a.repo] = wt;
-          log.launches.push(a.repo);
-          await call('orchestrator.launched', { runId, repo: a.repo, threadId: `T-${a.repo}` });
+          const repo = a.repo || info.repos.find((/** @type {any} */ x) => x.primary).name;
+          threadWt[repo] = wt;
+          log.launches.push(a.type === 'launch-driver' ? `run(${repo})` : repo);
+          await call('orchestrator.launched', { runId, repo, threadId: a.type === 'launch-driver' ? 'T-run' : `T-${repo}`, driver: a.type === 'launch-driver' });
+          if (a.type === 'launch-driver') driverLaunched = true;
           progressed = true;
         } else if (a.type === 'dispatch') {
           await call('orchestrator.started', { runId, dispatchId: a.dispatchId, taskId: `t${++task}` });
           const brief = await call('roles.brief', { runId, dispatchId: a.dispatchId });
           const d = (await call('orchestrator.status', { runId })).running.find((/** @type {any} */ x) => x.id === a.dispatchId);
-          log.dispatches.push({ id: a.dispatchId, scope, isolation: a.delegate.isolation, model: d.model });
-          await child({ ...a, scope, model: d.model, brief: brief.brief, cwd: scope === 'foreman' ? null : threadWt[scope] }, { threadWt });
+          log.dispatches.push({ id: a.dispatchId, scope: a.scope, thread: scope, isolation: a.delegate.isolation, model: d.model });
+          await child({ ...a, model: d.model, brief: brief.brief, cwd: a.scope === 'foreman' ? null : threadWt[a.scope] }, { threadWt });
           await call('orchestrator.finished', { runId, dispatchId: a.dispatchId, status: 'completed', summary: 'DONE' });
           progressed = true;
         } else if (a.type === 'checkout') {
-          await call('workspace.prepare', { runId, repo: scope, cwd: threadWt[scope] }, threadWt[scope]);
+          await call('workspace.prepare', { runId, repo: a.repo, cwd: threadWt[a.repo] }, threadWt[a.repo]);
           progressed = true;
         } else if (a.type === 'gate') {
+          assert.equal(scope, 'desk', 'only the user\'s thread sees gates');
+          assert.ok(a.url && a.url.endsWith(a.htmlPath), 'gates come with a link to the page');
           const { decision, notes } = await gate(a.gate, a.round);
           await call('orchestrator.decide', { runId, gate: a.gate, decision, notes });
           progressed = true;
         } else if (a.type === 'blocked') {
           assert.ok(blocked, `unexpected block: ${a.reason}`);
+          assert.equal(scope, 'desk', 'only the user\'s thread sees blocks');
           await call('orchestrator.decide', { runId, gate: 'blocked', scope: a.scope, decision: await blocked(a) });
           progressed = true;
         } else if (a.type === 'publish') {
           log.publish = await call('publish.stack', { runId });
+          // Like the real run thread: carry on, which tells the user's thread the run is finished.
+          for (const n of (await call('orchestrator.next', { runId })).actions.filter((/** @type {any} */ x) => x.type === 'notify')) {
+            log.notifies.push({ from: 'run', to: n.to, message: n.message });
+            await call('orchestrator.sent', { runId, id: n.id });
+          }
           progressed = true;
         } else if (a.type === 'done') {
+          assert.equal(scope, 'desk');
           return { ...log, threadWt };
         } else if (['wait', 'idle', 'finished'].includes(a.type)) {
           // nothing to do for this scope right now
