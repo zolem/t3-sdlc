@@ -14,7 +14,7 @@ import { CONTENT_ROOT, readJson } from './store.js';
 /**
  * @typedef {{ providerInstanceId: string, model: string, options?: Record<string, string | boolean> }} Target
  * @typedef {{ targets: Target[], panel?: number, avoidFamilyOf?: string, isolation?: 'shared' | 'worktree', note?: string }} RolePolicy
- * @typedef {{ version: number, roles: Record<string, RolePolicy> }} Policy
+ * @typedef {{ version: number, roles: Record<string, RolePolicy>, settings?: Record<string, unknown> }} Policy
  * @typedef {{ available: Record<string, string[]>, options: Record<string, Record<string, string[]>> }} Availability
  */
 
@@ -42,7 +42,9 @@ export function familyOf(target) {
 /** @param {Policy | undefined} base @param {Partial<Policy> | undefined} layer */
 function mergePolicy(base, layer) {
   if (!layer) return base;
+  /** @type {Policy} */
   const out = { version: layer.version ?? base?.version ?? 1, roles: { ...(base?.roles || {}) } };
+  if (base?.settings || layer.settings) out.settings = { ...(base?.settings || {}), ...(layer.settings || {}) };
   for (const [role, entry] of Object.entries(layer.roles || {})) {
     out.roles[role] = { ...(out.roles[role] || { targets: [] }), ...entry };
   }

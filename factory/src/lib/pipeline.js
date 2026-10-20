@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS = {
   maxDispatchAttempts: 3,
   maxSliceFixes: 3,
   maxFeatureFixRounds: 2,
+  costReport: true,
 };
 
 export const FOREMAN = 'foreman';

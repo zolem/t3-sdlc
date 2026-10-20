@@ -13,6 +13,7 @@ import { doctor } from '../lib/doctor.js';
 import { getIssue, issueToBrief, linearConfigured } from '../lib/linear.js';
 import { now, readJsonl, runDir, slugify } from '../lib/store.js';
 import { runInfo } from './run.js';
+import { writeCostReport } from './report.js';
 
 /** @param {string} home @param {string} runId */
 export function envFor(home, runId) {
@@ -47,6 +48,24 @@ function routingTable(run) {
     }
   }
   return out;
+}
+
+/** Cost section of the summary (settings.costReport, on by default). Never fails the summary. @param {string} home @param {any} run */
+function costSection(home, run) {
+  if (run.settings?.costReport === false) return [];
+  try {
+    const c = writeCostReport(home, run.id);
+    const $ = (/** @type {number} */ x) => `$${x.toFixed(2)}`;
+    return [
+      '',
+      '### Cost (API list price)',
+      `${c.totals.estimatedUsd ? '~' : ''}${$(c.totals.usd)}${c.totals.estimatedUsd ? ` (${$(c.totals.measuredUsd)} measured + ${$(c.totals.estimatedUsd)} estimated)` : ''} · ${c.totals.wallMinutes} min wall · ${c.totals.tokens.total >= 1e6 ? `${(c.totals.tokens.total / 1e6).toFixed(1)}M` : `${Math.round(c.totals.tokens.total / 1000)}k`} tokens${c.totals.unmeasured ? ` · ${c.totals.unmeasured} unmeasured` : ''}`,
+      ...c.byPhase.map(p => `- ${p.label}: ${$(p.usd + p.estimatedUsd)}${p.wallMinutes !== null ? `, ${p.wallMinutes} min` : ''}`),
+      `Full report: \`${c.htmlPath}\`. Show it: factory.run.read({ runId: "${run.id}", path: "${c.runPath}" }), then html_render.`,
+    ];
+  } catch (err) {
+    return ['', `Cost report unavailable: ${err instanceof Error ? err.message : err}`];
+  }
 }
 
 const ACTION_HELP = `Execute every action in order:
@@ -133,7 +152,7 @@ export default {
           workspace: { name: ws.name, app: ws.app },
           capabilities: { ...pre.enabled, skipped: skipList },
           policy, policySources: sources, availability,
-          settings: { ...DEFAULT_SETTINGS, ...(settings || {}) },
+          settings: { ...DEFAULT_SETTINGS, ...(policy.settings || {}), ...(settings || {}) },
           dispatches: [], gates: { plan: [], stack: [] }, slices: [], feature: { round: 1 }, docs: null, stackRound: 1, allowances: {}, prs: [], blocked: {},
         };
         const routing = routingTable(run);
@@ -266,6 +285,7 @@ export default {
           '| Dispatch | Model | Minutes |',
           '|---|---|---|',
           ...done.map((/** @type {any} */ d) => `| ${d.title} | ${d.target.model} | ${mins(d) ?? '–'} |`),
+          ...costSection(ctx.home, run),
         ];
         return lines.join('\n');
       },
