@@ -32,6 +32,7 @@ import { assignBranches, primaryRepo, slicesIn } from './workspace.js';
 export const DEFAULT_SETTINGS = {
   maxDispatchAttempts: 3,
   maxFeatureFixRounds: 1,
+  costReport: true,
 };
 
 /** The docs slice is opt-in: run settings, else the primary repo's contract (`"docs": { "enabled": true }`). @param {any} run */
@@ -505,7 +506,7 @@ export function actions(run, scope = FOREMAN) {
       return { type: 'blocked', scope: b.scope, reason: b.reason, options, how: `Show the reason to the user and ask: ${options.join(', ')}.${help} Then factory.orchestrator.decide({ runId, gate: "blocked", scope: "${b.scope}", decision }).` };
     })];
   }
-  if (run.cursor === 'done') return [...out, { type: 'done', how: 'Call factory.orchestrator.summary({ runId }) and show it. Settle this run’s repo threads and your own finished child threads.' }];
+  if (run.cursor === 'done') return [...out, { type: 'done', how: `Call factory.orchestrator.summary({ runId }) and show it.${run.settings.costReport === false ? '' : ' Then show the cost report: factory.run.read({ runId, path: "reports/cost.html" }) and html_render it.'} Settle this run’s repo threads and your own finished child threads.` }];
   if (run.cursor === 'publish') return [...out, { type: 'publish', how: 'The user approved the PR stack. Call factory.publish.stack({ runId }), link every returned PR URL with link_pull_request, then call factory.orchestrator.next({ runId }).' }];
   for (const gate of ['plan', 'stack']) {
     if (run.cursor === `gate:${gate}`) {

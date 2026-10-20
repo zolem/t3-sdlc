@@ -13,8 +13,9 @@ import policy from './policy.js';
 import ledger from './ledger.js';
 import integrations from './integrations.js';
 import workspace from './workspace.js';
+import report from './report.js';
 
 /** @returns {import('../registry.js').ModuleDef[]} */
 export function loadModules() {
-  return [orchestrator, roles, dispatch, run, workspace, checks, app, git, history, publish, policy, ledger, ...integrations, meta];
+  return [orchestrator, roles, dispatch, run, workspace, checks, app, git, history, publish, policy, ledger, report, ...integrations, meta];
 }
