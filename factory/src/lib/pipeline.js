@@ -5,19 +5,23 @@
 //             whole feature, owns both human gates, the cross-repo feature review
 //             and publishing. It never builds.
 //   <repo>    one T3 thread per repo, launched by the foreman in a worktree of that
-//             repo. Builds and verifies that repo's slices, applies fixes, writes
-//             docs (primary repo), then idles until the foreman asks for more.
+//             repo. Every child it starts works in that one worktree, one at a
+//             time: it builds the repo's slices, applies fixes, writes docs
+//             (primary repo, when enabled), then idles until the foreman asks for more.
 //
 // Every thread calls next({ runId, repo? }) and carries out only its own scope's
 // actions. Threads coordinate through an outbox of short messages the factory
 // queues at milestones (build done, fix done, blocked, dependency ready), so the
 // foreman's context only grows by a line per milestone.
 //
-// Foreman:  requirements → context → design(architect ∥ qa) → slicing → plan explainer → GATE plan
+// Foreman:  intake(requirements ∥ context) → design(architect ∥ qa) → slicing → plan explainer → GATE plan
 //           → launch repo threads → (repos build) → feature review panel ∥ integrated validation
-//           → cross-examine → fixes routed to repos ↺ → docs (primary repo) → stack explainer
-//           → GATE stack → publish → done
-// Repo:     per slice in order: build → verify(review ∥ validate) → fix ↺ → … → checkout → idle
+//           → fixes routed to repos → recheck what changed (↺ up to maxFeatureFixRounds) → docs (opt-in)
+//           → stack explainer → GATE stack → publish → done
+// Repo:     per slice in order: build (the repo's checks are the gate) → … → checkout → idle
+//
+// Review happens once, on the whole feature. Engineers must pass the repo's
+// deterministic checks (lint, types, tests…) before a slice counts as built.
 
 import { resolveTargets } from './policy.js';
 import { contractFor, BLOCKING } from './contracts.js';
@@ -27,9 +31,13 @@ import { assignBranches, primaryRepo, slicesIn } from './workspace.js';
 
 export const DEFAULT_SETTINGS = {
   maxDispatchAttempts: 3,
-  maxSliceFixes: 3,
-  maxFeatureFixRounds: 2,
+  maxFeatureFixRounds: 1,
 };
+
+/** The docs slice is opt-in: run settings, else the primary repo's contract (`"docs": { "enabled": true }`). @param {any} run */
+export function docsEnabled(run) {
+  return run.settings?.docs ?? Boolean(primaryRepo(run).contract?.docs?.enabled);
+}
 
 export const FOREMAN = 'foreman';
 
@@ -185,7 +193,7 @@ function rstate(run, repo) {
  * @param {any} run @param {Env} env @param {string} [scope]
  */
 export function advance(run, env, scope = FOREMAN) {
-  const fingerprint = () => JSON.stringify([run.cursor, run.dispatches.length, run.slices.map((/** @type {any} */ s) => [s.phase, s.verifyRound, s.fixes]), run.repoState, run.feature.round, run.docs?.round, run.stackRound, Object.keys(run.blocked || {})]);
+  const fingerprint = () => JSON.stringify([run.cursor, run.dispatches.length, run.slices.map((/** @type {any} */ s) => s.phase), run.repoState, run.feature.round, run.docs?.round, run.stackRound, Object.keys(run.blocked || {})]);
   for (let guard = 0; guard < 100; guard++) {
     const before = run.cursor;
     const print = fingerprint();
@@ -202,14 +210,11 @@ function stepForeman(run, env) {
   const r = planRound(run);
   const F = FOREMAN;
   switch (run.cursor) {
-    case 'requirements': {
-      const d = ensure(run, F, 'requirements', { role: 'product-manager', title: 'Write requirements', inputs: [DOC_INPUTS.brief] }, env);
-      if (isDone(d)) run.cursor = 'context';
-      return;
-    }
-    case 'context': {
-      const d = ensure(run, F, 'context', { role: 'context-curator', title: 'Curate context', inputs: [DOC_INPUTS.brief, DOC_INPUTS.requirements] }, env);
-      if (isDone(d)) run.cursor = 'design';
+    case 'intake': {
+      // The curator works from the brief so it can run alongside the product manager.
+      const pm = ensure(run, F, 'requirements', { role: 'product-manager', title: 'Write requirements', inputs: [DOC_INPUTS.brief] }, env);
+      const cc = ensure(run, F, 'context', { role: 'context-curator', title: 'Curate context', inputs: [DOC_INPUTS.brief] }, env);
+      if (isDone(pm) && isDone(cc)) run.cursor = 'design';
       return;
     }
     case 'design': {
@@ -243,18 +248,16 @@ function stepForeman(run, env) {
       return;
     case 'feature-verify':
       return stepFeatureVerify(run, env);
-    case 'feature-crossexam':
-      return stepCrossExam(run, env);
     case 'feature-fix':
     case 'stack-fix':
       if (activeRepos(run).every(n => rstate(run, n).phase === 'idle')) {
         if (run.cursor === 'feature-fix') {
           run.feature.round += 1;
           run.cursor = 'feature-verify';
-        } else {
+        } else if (docsEnabled(run) && run.docs.headSha) {
           run.docs.round += 1;
           requestDocs(run, env);
-        }
+        } else run.cursor = 'stack-explainer';
       }
       return;
     case 'docs':
@@ -262,7 +265,7 @@ function stepForeman(run, env) {
       return;
     case 'stack-explainer': {
       const sr = run.stackRound;
-      const d = ensure(run, F, `stack-explainer.r${sr}`, { role: 'explainer', mode: 'stack', title: `PR stack explainer (round ${sr})`, inputs: [DOC_INPUTS.brief, DOC_INPUTS.requirements, DOC_INPUTS.architecture, DOC_INPUTS.slices, { path: `reviews/feature-r${run.feature.round}.json`, note: 'Final feature review: blocking, disputed and minor findings.' }] }, env);
+      const d = ensure(run, F, `stack-explainer.r${sr}`, { role: 'explainer', mode: 'stack', title: `PR stack explainer (round ${sr})`, inputs: [DOC_INPUTS.brief, DOC_INPUTS.requirements, DOC_INPUTS.architecture, DOC_INPUTS.testPlan, DOC_INPUTS.slices, { path: `reviews/feature-r${run.feature.round}.json`, note: 'Final feature review: findings still open (if the user accepted them) and minor follow-ups.' }] }, env);
       if (isDone(d)) {
         run.gates.stack.push({ round: sr, status: 'open', htmlPath: 'explainers/stack.html', openedAt: now() });
         run.cursor = 'gate:stack';
@@ -272,6 +275,12 @@ function stepForeman(run, env) {
     default:
       throw new Error(`Unknown cursor "${run.cursor}"`);
   }
+}
+
+/** The feature passed (or the user accepted it): docs when enabled, else straight to the stack explainer. @param {any} run @param {Env} env */
+function afterFeature(run, env) {
+  if (docsEnabled(run)) requestDocs(run, env);
+  else run.cursor = 'stack-explainer';
 }
 
 /** Ask the primary repo thread for the docs slice. @param {any} run @param {Env} env */
@@ -329,76 +338,24 @@ function stepRepo(run, repo, env) {
 /** @param {any} run @param {string} repo @param {any} s @param {Env} env */
 function stepSlice(run, repo, s, env) {
   const st = rstate(run, repo);
-  const specInput = { path: s.spec, note: `Spec for slice ${s.n}: ${s.title}` };
-  const common = [specInput, DOC_INPUTS.architecture, DOC_INPUTS.testPlan, DOC_INPUTS.context];
-
-  if (s.phase === 'build') {
-    const waitingOn = (s.dependsOn || []).map((/** @type {number} */ n) => sliceN(run, n)).filter((/** @type {any} */ d) => d && d.repo !== repo && d.phase !== 'done').map((/** @type {any} */ d) => d.n);
-    if (waitingOn.length) {
-      st.waitingOn = waitingOn;
-      return;
-    }
-    delete st.waitingOn;
-    const d = ensure(run, repo, `slice-${s.n}.build`, { role: 'engineer', mode: 'build', title: `Build slice ${s.n}: ${s.title}`, slice: s.n, inputs: common, extra: { branch: s.branch, baseRef: s.baseRef } }, env);
-    if (isDone(d)) {
-      s.author = { family: d.family, model: d.target.model };
-      s.phase = 'verify';
-      s.verifyRound = 1;
-    }
+  const waitingOn = (s.dependsOn || []).map((/** @type {number} */ n) => sliceN(run, n)).filter((/** @type {any} */ d) => d && d.repo !== repo && d.phase !== 'done').map((/** @type {any} */ d) => d.n);
+  if (waitingOn.length) {
+    st.waitingOn = waitingOn;
     return;
   }
-
-  if (s.phase === 'verify') {
-    const v = s.verifyRound;
-    const reviewInputs = [specInput, DOC_INPUTS.requirements, DOC_INPUTS.architecture, DOC_INPUTS.testPlan];
-    if (v > 1) reviewInputs.push({ path: `reviews/slice-${s.n}-v${v - 1}.json`, note: 'Findings from the previous round; confirm each is fixed.' });
-    const review = ensure(run, repo, `slice-${s.n}.review.v${v}`, { role: 'reviewer', mode: 'slice', title: `Review slice ${s.n} (round ${v})`, slice: s.n, inputs: reviewInputs, avoidFamilies: [s.author.family] }, env);
-    const validate = s.ui && sliceApp(run, s)
-      ? ensure(run, repo, `slice-${s.n}.validate.v${v}`, { role: 'manual-tester', mode: 'slice', title: `Validate slice ${s.n} in the app (round ${v})`, slice: s.n, inputs: [specInput, DOC_INPUTS.requirements, DOC_INPUTS.testPlan], extra: { branch: s.branch } }, env)
-      : null;
-    if (!isDone(review) || (validate && !isDone(validate))) return;
-
-    const findings = [
-      ...(review.report.findings || []).map((/** @type {any} */ f) => ({ ...f, source: 'review', slice: s.n })),
-      ...((validate?.report.findings) || []).map((/** @type {any} */ f) => ({ ...f, source: 'validation', slice: s.n })),
-    ];
-    const blocking = findings.filter(f => BLOCKING.has(f.severity) && !f.preexisting);
-    const minor = findings.filter(f => !blocking.includes(f));
-    env.write(`reviews/slice-${s.n}-v${v}.json`, JSON.stringify({ slice: s.n, repo, round: v, headSha: s.headSha, blocking, minor, screenshots: validate?.report.screenshots || [] }, null, 2));
-    s.lastVerify = { round: v, blocking: blocking.length, minor: minor.length };
-    env.ledger({ event: 'slice.verified', slice: s.n, repo, round: v, blocking: blocking.length, minor: minor.length, author: s.author, reviewer: review.target.model, validator: validate?.target.model });
-    if (blocking.length === 0) {
-      s.phase = 'done';
-      s.completedAt = now();
-      // Wake repos whose next slice was waiting on this one.
-      for (const [other, ost] of Object.entries(run.repoState || {})) {
-        if (other !== repo && /** @type {any} */ (ost).waitingOn?.includes(s.n)) notify(run, repo, other, `Slice ${s.n} (${repo}) is done; your slice can start. Call factory.orchestrator.next({ runId: "${run.id}", repo: "${other}" }).`, env);
-      }
-      return;
-    }
-    if (s.fixes >= run.settings.maxSliceFixes + (s.extraFixes || 0)) {
-      block(run, repo, { kind: 'slice-fixes', slice: s.n, reason: `Slice ${s.n} still has ${blocking.length} blocking finding(s) after ${s.fixes} fix round(s). See reviews/slice-${s.n}-v${v}.json.` }, env);
-      return;
-    }
-    s.phase = 'fix';
-    return;
+  delete st.waitingOn;
+  const inputs = [{ path: s.spec, note: `Spec for slice ${s.n}: ${s.title}` }, DOC_INPUTS.architecture, DOC_INPUTS.testPlan, DOC_INPUTS.context];
+  const d = ensure(run, repo, `slice-${s.n}.build`, { role: 'engineer', mode: 'build', title: `Build slice ${s.n}: ${s.title}`, slice: s.n, inputs, extra: { branch: s.branch, baseRef: s.baseRef } }, env);
+  if (!isDone(d)) return;
+  // The report was only accepted with passing checks on the branch head.
+  s.author = { family: d.family, model: d.target.model };
+  s.phase = 'done';
+  s.completedAt = now();
+  env.ledger({ event: 'slice.built', slice: s.n, repo, author: s.author, headSha: s.headSha });
+  // Wake repos whose next slice was waiting on this one.
+  for (const [other, ost] of Object.entries(run.repoState || {})) {
+    if (other !== repo && /** @type {any} */ (ost).waitingOn?.includes(s.n)) notify(run, repo, other, `Slice ${s.n} (${repo}) is done; your slice can start. Call factory.orchestrator.next({ runId: "${run.id}", repo: "${other}" }).`, env);
   }
-
-  if (s.phase === 'fix') {
-    const v = s.verifyRound;
-    const d = ensure(run, repo, `slice-${s.n}.fix.${s.fixes + 1}`, { role: 'engineer', mode: 'fix', title: `Fix slice ${s.n} (round ${s.fixes + 1})`, slice: s.n, inputs: [specInput, DOC_INPUTS.architecture, { path: `reviews/slice-${s.n}-v${v}.json`, note: 'Blocking findings to fix (minor ones optional).' }], extra: { branch: s.branch, baseRef: s.baseRef } }, env);
-    if (isDone(d)) {
-      s.fixes += 1;
-      s.verifyRound += 1;
-      s.phase = 'verify';
-    }
-  }
-}
-
-/** Per-slice validation uses the slice repo's own app. @param {any} run @param {any} s */
-export function sliceApp(run, s) {
-  if (!run.capabilities?.browserValidation) return null;
-  return run.repos[s.repo]?.contract?.app || null;
 }
 
 /** Whole-feature validation uses the workspace app, else the primary repo's app. @param {any} run */
@@ -407,47 +364,60 @@ export function featureApp(run) {
   return run.workspace?.app || primaryRepo(run).contract?.app || null;
 }
 
-/** @param {any} run @param {Env} env */
+const PANEL = ['a', 'b'];
+
+/**
+ * Round 1: two reviewers from different families review the whole feature while the
+ * manual tester walks it in a browser. Later rounds re-check only what the fixes
+ * touched: each reviewer re-checks its own open findings against the new heads, and
+ * the browser walk re-runs only when a fix touched a UI slice or validation had failed.
+ * @param {any} run @param {Env} env
+ */
 function stepFeatureVerify(run, env) {
   const fr = run.feature.round;
   const F = FOREMAN;
-  const inputs = [DOC_INPUTS.requirements, DOC_INPUTS.architecture, DOC_INPUTS.testPlan, DOC_INPUTS.slices];
-  if (fr > 1) inputs.push({ path: `reviews/feature-r${fr - 1}.json`, note: 'Previous round findings; confirm fixes and look for regressions.' });
-  const a = ensure(run, F, `feature.review.r${fr}.a`, { role: 'feature-reviewer', mode: 'review', title: `Feature review A (round ${fr})`, inputs, panelIndex: 0 }, env);
-  const b = ensure(run, F, `feature.review.r${fr}.b`, { role: 'feature-reviewer', mode: 'review', title: `Feature review B (round ${fr})`, inputs, panelIndex: 1 }, env);
-  const validate = featureApp(run)
-    ? ensure(run, F, `feature.validate.r${fr}`, { role: 'manual-tester', mode: 'feature', title: `Validate the whole feature (round ${fr})`, inputs: [DOC_INPUTS.requirements, DOC_INPUTS.testPlan] }, env)
-    : null;
-  if (isDone(a) && isDone(b) && (!validate || isDone(validate))) run.cursor = 'feature-crossexam';
-}
+  /** @type {{ source: string, d: any }[]} */
+  const parts = [];
+  let carried = /** @type {any[]} */ ([]);
+  if (fr === 1) {
+    const inputs = [DOC_INPUTS.requirements, DOC_INPUTS.architecture, DOC_INPUTS.testPlan, DOC_INPUTS.slices];
+    PANEL.forEach((x, i) => parts.push({ source: x, d: ensure(run, F, `feature.review.r1.${x}`, { role: 'feature-reviewer', mode: 'review', title: `Feature review ${x.toUpperCase()}`, inputs, panelIndex: i }, env) }));
+    if (featureApp(run)) parts.push({ source: 'validate', d: ensure(run, F, 'feature.validate.r1', { role: 'manual-tester', mode: 'feature', title: 'Validate the whole feature', inputs: [DOC_INPUTS.requirements, DOC_INPUTS.testPlan, DOC_INPUTS.slices] }, env) });
+  } else {
+    const prev = JSON.parse(env.read(`reviews/feature-r${fr - 1}.json`));
+    carried = prev.minor || [];
+    const fixes = run.dispatches.filter((/** @type {any} */ d) => d.key.startsWith(`feature.fix.r${fr - 1}.`) && d.status === 'done');
+    const responses = fixes.flatMap((/** @type {any} */ d) => d.report.addressed || []);
+    for (const x of PANEL) {
+      const open = prev.blocking.filter((/** @type {any} */ f) => f.source === x);
+      if (!open.length) continue;
+      const first = latest(run, `feature.review.r1.${x}`);
+      const file = `reviews/feature-r${fr}-recheck-${x}.json`;
+      if (!env.exists(file)) env.write(file, JSON.stringify({ findings: open, engineerResponses: responses.filter((/** @type {any} */ r) => open.some((/** @type {any} */ f) => f.id === r.id)), reviewedHeads: prev.heads }, null, 2));
+      parts.push({ source: x, d: ensure(run, F, `feature.recheck.r${fr}.${x}`, { role: 'feature-reviewer', mode: 'recheck', title: `Re-check review ${x.toUpperCase()} findings (round ${fr})`, pinTarget: { ...first.target, family: first.family }, inputs: [DOC_INPUTS.requirements, DOC_INPUTS.slices, { path: file, note: 'Your open findings from the last round, what the engineers did about each, and the slice heads you reviewed.' }], extra: { recheckFile: file } }, env) });
+    }
+    const uiTouched = responses.some((/** @type {any} */ r) => !sliceN(run, Number(r.slice)) || sliceN(run, Number(r.slice)).ui);
+    if (featureApp(run) && (uiTouched || prev.blocking.some((/** @type {any} */ f) => f.source === 'validate'))) {
+      parts.push({ source: 'validate', d: ensure(run, F, `feature.validate.r${fr}`, { role: 'manual-tester', mode: 'feature', title: `Re-validate the feature (round ${fr})`, inputs: [DOC_INPUTS.requirements, DOC_INPUTS.testPlan, DOC_INPUTS.slices, { path: `reviews/feature-r${fr - 1}.json`, note: 'Last round. Confirm the validation findings are fixed first, then re-walk the main flows the fixes touched.' }] }, env) });
+    }
+  }
+  if (!parts.every(p => isDone(p.d))) return;
 
-/** @param {any} run @param {Env} env */
-function stepCrossExam(run, env) {
-  const fr = run.feature.round;
-  const F = FOREMAN;
-  const a = latest(run, `feature.review.r${fr}.a`);
-  const b = latest(run, `feature.review.r${fr}.b`);
-  const ca = ensure(run, F, `feature.crossexam.r${fr}.a`, { role: 'feature-reviewer', mode: 'crossexam', title: `Cross-examine B's findings (round ${fr})`, pinTarget: { ...a.target, family: a.family }, inputs: [DOC_INPUTS.requirements, DOC_INPUTS.architecture, { path: `reports/${b.id}.json`, note: "The other reviewer's report. Respond to every finding." }], extra: { otherDispatchId: b.id } }, env);
-  const cb = ensure(run, F, `feature.crossexam.r${fr}.b`, { role: 'feature-reviewer', mode: 'crossexam', title: `Cross-examine A's findings (round ${fr})`, pinTarget: { ...b.target, family: b.family }, inputs: [DOC_INPUTS.requirements, DOC_INPUTS.architecture, { path: `reports/${a.id}.json`, note: "The other reviewer's report. Respond to every finding." }], extra: { otherDispatchId: a.id } }, env);
-  if (!isDone(ca) || !isDone(cb)) return;
-
-  const validate = latest(run, `feature.validate.r${fr}`);
-  const consolidated = consolidate({ a, b, ca, cb, validate });
-  env.write(`reviews/feature-r${fr}.json`, JSON.stringify({ round: fr, panel: [a.target.model, b.target.model], ...consolidated }, null, 2));
-  run.feature.last = { round: fr, blocking: consolidated.blocking.length, disputed: consolidated.disputed.length, minor: consolidated.minor.length };
+  const consolidated = consolidate(parts, carried);
+  const heads = Object.fromEntries(run.slices.map((/** @type {any} */ s) => [s.n, s.headSha]));
+  env.write(`reviews/feature-r${fr}.json`, JSON.stringify({ round: fr, by: Object.fromEntries(parts.map(p => [p.source, p.d.target.model])), heads, ...consolidated }, null, 2));
+  run.feature.last = { round: fr, blocking: consolidated.blocking.length, minor: consolidated.minor.length };
   env.ledger({ event: 'feature.consolidated', round: fr, ...run.feature.last });
-  for (const [mine, theirs] of [[a, cb], [b, ca]]) {
-    const raised = mine.report.findings || [];
-    const disputedIds = new Set((theirs.report.responses || []).filter((/** @type {any} */ x) => x.stance === 'dispute').map((/** @type {any} */ x) => x.findingId));
-    env.ledger({ event: 'feature.reviewer.score', round: fr, model: mine.target.model, family: mine.family, promptHash: mine.promptHash, raised: raised.length, confirmed: raised.filter((/** @type {any} */ f) => !disputedIds.has(f.id)).length, disputed: disputedIds.size, blockingRaised: raised.filter((/** @type {any} */ f) => BLOCKING.has(f.severity)).length });
+  if (fr === 1) {
+    for (const p of parts.filter(x => x.source !== 'validate')) {
+      const raised = p.d.report.findings || [];
+      env.ledger({ event: 'feature.reviewer.score', round: fr, model: p.d.target.model, family: p.d.family, promptHash: p.d.promptHash, raised: raised.length, blockingRaised: raised.filter((/** @type {any} */ f) => BLOCKING.has(f.severity)).length });
+    }
   }
 
-  if (consolidated.blocking.length === 0) {
-    requestDocs(run, env);
-    return;
-  }
-  if (fr >= run.settings.maxFeatureFixRounds + (run.feature.extraRounds || 0)) {
-    block(run, F, { kind: 'feature-rounds', reason: `${consolidated.blocking.length} blocking finding(s) remain after ${fr} feature round(s). See reviews/feature-r${fr}.json.` }, env);
+  if (consolidated.blocking.length === 0) return afterFeature(run, env);
+  if (fr > run.settings.maxFeatureFixRounds + (run.feature.extraRounds || 0)) {
+    block(run, F, { kind: 'feature-rounds', reason: `${consolidated.blocking.length} blocking finding(s) remain after ${fr - 1} fix round(s). See reviews/feature-r${fr}.json.` }, env);
     return;
   }
   routeFixes(run, consolidated.blocking, `feature.fix.r${fr}`, `Fix feature findings (round ${fr})`, `reviews/feature-r${fr}`, env);
@@ -474,28 +444,17 @@ function routeFixes(run, findings, keyPrefix, title, filePrefix, env) {
 }
 
 /**
- * Merge two adversarial reviews and their cross-examinations.
- * Agreed = the other reviewer confirmed. Disputed = the other reviewer pushed back
- * (surfaced to the human at the PR gate, never auto-fixed). Validation findings are
- * observed behavior and count as agreed. Findings marked preexisting are follow-ups.
- * @param {{ a: any, b: any, ca: any, cb: any, validate?: any }} p
+ * Merge the round's reports. Every finding keeps its source (reviewer a/b or
+ * validation) so the next round re-checks it with whoever raised it. Minor findings
+ * from earlier rounds are carried forward, never re-raised. Findings marked
+ * preexisting are follow-ups.
+ * @param {{ source: string, d: any }[]} parts @param {any[]} [carried]
  */
-export function consolidate({ a, b, ca, cb, validate }) {
-  /** @type {any[]} */
-  const agreed = [];
-  /** @type {any[]} */
-  const disputed = [];
-  const tag = (/** @type {any} */ f, /** @type {string} */ by, /** @type {any} */ stance) => ({ ...f, raisedBy: by, crossExam: stance || null });
-  const stances = (/** @type {any} */ cx) => Object.fromEntries((cx.report.responses || []).map((/** @type {any} */ r) => [r.findingId, r]));
-  const sa = stances(cb);
-  const sb = stances(ca);
-  for (const f of a.report.findings || []) (sa[f.id]?.stance === 'dispute' ? disputed : agreed).push(tag(f, a.target.model, sa[f.id]));
-  for (const f of b.report.findings || []) (sb[f.id]?.stance === 'dispute' ? disputed : agreed).push(tag(f, b.target.model, sb[f.id]));
-  for (const f of ca.report.findings || []) agreed.push(tag(f, `${a.target.model} (cross-exam)`, null));
-  for (const f of cb.report.findings || []) agreed.push(tag(f, `${b.target.model} (cross-exam)`, null));
-  for (const f of validate?.report.findings || []) agreed.push(tag(f, `${validate.target.model} (manual validation)`, null));
-  const blocking = agreed.filter(f => BLOCKING.has(f.severity) && !f.preexisting);
-  return { blocking, minor: agreed.filter(f => !blocking.includes(f)), disputed, screenshots: validate?.report.screenshots || [] };
+export function consolidate(parts, carried = []) {
+  const all = parts.flatMap(({ source, d }) => (d.report.findings || []).map((/** @type {any} */ f) => ({ ...f, source, raisedBy: d.target.model })));
+  const blocking = all.filter(f => BLOCKING.has(f.severity) && !f.preexisting);
+  const validate = parts.find(p => p.source === 'validate');
+  return { blocking, minor: [...carried, ...all.filter(f => !blocking.includes(f))], screenshots: validate?.d.report.screenshots || [] };
 }
 
 /** @param {any} run @param {string} scope */
@@ -540,7 +499,11 @@ export function actions(run, scope = FOREMAN) {
 
   const blocked = Object.values(run.blocked || {});
   if (blocked.length) {
-    return [...out, ...blocked.map((/** @type {any} */ b) => ({ type: 'blocked', scope: b.scope, reason: b.reason, options: ['retry', 'abort'], how: `Show the reason to the user, then factory.orchestrator.decide({ runId, gate: "blocked", scope: "${b.scope}", decision }).` }))];
+    return [...out, ...blocked.map((/** @type {any} */ b) => {
+      const options = b.kind === 'feature-rounds' ? ['accept', 'retry', 'abort'] : ['retry', 'abort'];
+      const help = b.kind === 'feature-rounds' ? ' accept = continue to the PR stack with these findings shown as open; retry = one more fix round; abort = stop the run.' : '';
+      return { type: 'blocked', scope: b.scope, reason: b.reason, options, how: `Show the reason to the user and ask: ${options.join(', ')}.${help} Then factory.orchestrator.decide({ runId, gate: "blocked", scope: "${b.scope}", decision }).` };
+    })];
   }
   if (run.cursor === 'done') return [...out, { type: 'done', how: 'Call factory.orchestrator.summary({ runId }) and show it. Settle this run’s repo threads and your own finished child threads.' }];
   if (run.cursor === 'publish') return [...out, { type: 'publish', how: 'The user approved the PR stack. Call factory.publish.stack({ runId }), link every returned PR URL with link_pull_request, then call factory.orchestrator.next({ runId }).' }];
@@ -586,7 +549,6 @@ export function decide(run, { gate, decision, notes, scope, repos }, env) {
       }
     } else if (decision === 'retry') {
       if (b.kind === 'dispatch') run.allowances[b.key] = (run.allowances[b.key] || 0) + 1;
-      if (b.kind === 'slice-fixes') sliceN(run, b.slice).extraFixes = (sliceN(run, b.slice).extraFixes || 0) + 1;
       if (b.kind === 'feature-rounds') {
         run.feature.extraRounds = (run.feature.extraRounds || 0) + 1;
         const last = JSON.parse(env.read(`reviews/feature-r${run.feature.round}.json`));
@@ -595,7 +557,12 @@ export function decide(run, { gate, decision, notes, scope, repos }, env) {
       }
       delete run.blocked[key];
       if (key !== FOREMAN) notify(run, FOREMAN, key, `The user chose to retry. Call factory.orchestrator.next({ runId: "${run.id}", repo: "${key}" }).`, env);
-    } else throw new Error('Blocked decisions are "retry" or "abort"');
+    } else if (decision === 'accept') {
+      if (b.kind !== 'feature-rounds') throw new Error(`"accept" only applies to open feature findings; this block (${b.kind}) is "retry" or "abort"`);
+      run.feature.accepted = { round: run.feature.round, open: run.feature.last?.blocking ?? null, notes: notes || '' };
+      delete run.blocked[key];
+      afterFeature(run, env);
+    } else throw new Error('Blocked decisions are "retry", "abort", or (for open feature findings) "accept"');
     env.ledger({ event: 'blocked.decided', scope: key, decision, kind: b.kind, notes });
     return;
   }
@@ -655,7 +622,7 @@ function initSlices(run, env) {
   run.slices = doc.slices.map((/** @type {any} */ s) => ({
     n: s.n, slug: s.slug, title: s.title, layer: s.layer, ui: s.ui, repo: s.repo, dependsOn: s.dependsOn || [],
     testCases: s.testCases || [], manualCases: s.manualCases || [], spec: s.spec,
-    phase: 'build', fixes: 0, headSha: null,
+    phase: 'build', headSha: null,
   }));
   assignBranches(run);
 }

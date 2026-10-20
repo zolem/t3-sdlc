@@ -25,7 +25,7 @@ export default {
           ledger(ctx.home, runId, { event: 'dispatch.rejected', dispatchId, errors });
           throw new Error(`Report rejected. Fix these and report again:\n- ${errors.join('\n- ')}`);
         }
-        const verdict = Array.isArray(report.findings) && ['reviewer', 'feature-reviewer', 'manual-tester'].includes(d.role) ? verdictOf(report.findings) : undefined;
+        const verdict = Array.isArray(report.findings) && ['feature-reviewer', 'manual-tester'].includes(d.role) ? verdictOf(report.findings) : undefined;
         writeRunFile(ctx.home, runId, `reports/${dispatchId}.json`, JSON.stringify({ dispatchId, role: d.role, mode: d.mode, model: d.target.model, verdict, ...report }, null, 2));
         mutateRun(ctx.home, runId, r => {
           const x = findDispatch(r, dispatchId);

@@ -7,7 +7,7 @@ description: Internal to the t3-sdlc factory. Drives one repo's build inside a r
 
 The message that started this thread names the run id, the repo, and the foreman's thread id.
 
-You drive one repo's part of a factory run. You are in a T3 worktree of that repo. Run this loop yourself, in this thread: never hand the coordination to a child task. The only children you start are the factory's **dispatch** actions. You do no SDLC work yourself: you carry out the factory's actions for your scope and stay quiet. Only the factory decides when the foreman hears from you.
+You drive one repo's part of a factory run. You are in a T3 worktree of that repo: the run's one checkout of it. Every child you start works in this same checkout, one at a time. Run this loop yourself, in this thread: never hand the coordination to a child task. The only children you start are the factory's **dispatch** actions. You do no SDLC work yourself: you carry out the factory's actions for your scope and stay quiet. Only the factory decides when the foreman hears from you.
 
 ## Tools
 - **The factory CLI**, `~/.t3-sdlc/bin/t3-sdlc`, run from this thread's checkout. Each call is one exec:
@@ -21,9 +21,9 @@ You drive one repo's part of a factory run. You are in a T3 worktree of that rep
 
 ## Loop
 Call `factory.orchestrator.next({ runId, repo })` and handle every action in order:
-- **dispatch** → `delegate_task` with `action.delegate` exactly as given. Worktree isolation gives the child its own checkout of this repo. Then `factory.orchestrator.started({ runId, dispatchId, taskId, childThreadId })`. Start every dispatch before waiting.
+- **dispatch** → `delegate_task` with `action.delegate` exactly as given. Shared isolation means the child works in this thread's checkout; never start a second dispatch while one is running (the factory only gives you one at a time). Then `factory.orchestrator.started({ runId, dispatchId, taskId, childThreadId })`. Start every dispatch before waiting.
 - **notify** → `t3_thread_send({ threadId: action.threadId, message: action.message })`, then `factory.orchestrator.sent({ runId, id })`. These go to the foreman, or to another repo thread that was waiting on you.
-- **checkout** → run `pwd`, then `factory.workspace.prepare({ runId, repo, cwd: <that path> })`, then call `next` again. Keep your own checkout clean: never edit files in it.
+- **checkout** → run `pwd`, then `factory.workspace.prepare({ runId, repo, cwd: <that path> })`, then call `next` again. Never edit files in your checkout yourself; children leave it clean and detached.
 - **wait** / **idle** → end your turn with one line. A finished child or a message wakes you.
 - **finished** → settle your remaining finished child threads, reply with one line, and stop.
 

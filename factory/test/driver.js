@@ -13,7 +13,7 @@ const CONTENT = fs.mkdtempSync(path.join(os.tmpdir(), 'factory-content-'));
 fs.mkdirSync(path.join(CONTENT, 'roles'));
 fs.mkdirSync(path.join(CONTENT, 'policy'));
 fs.copyFileSync(new URL('../../policy/org.json', import.meta.url), path.join(CONTENT, 'policy', 'org.json'));
-for (const role of ['product-manager', 'context-curator', 'architect', 'qa-analyst', 'slice-planner', 'explainer', 'engineer', 'manual-tester', 'reviewer', 'feature-reviewer', 'docs-writer']) {
+for (const role of ['product-manager', 'context-curator', 'architect', 'qa-analyst', 'slice-planner', 'explainer', 'engineer', 'manual-tester', 'feature-reviewer', 'docs-writer']) {
   fs.writeFileSync(path.join(CONTENT, 'roles', `${role}.md`), `---\nversion: test\n---\nYou are the ${role}.\n`);
 }
 process.env.ORCHESTRATE_CONTENT = CONTENT;
@@ -100,7 +100,7 @@ export async function drive({ call, runId, tmp, child, gate, blocked }) {
           const brief = await call('roles.brief', { runId, dispatchId: a.dispatchId });
           const d = (await call('orchestrator.status', { runId })).running.find((/** @type {any} */ x) => x.id === a.dispatchId);
           log.dispatches.push({ id: a.dispatchId, scope, isolation: a.delegate.isolation, model: d.model });
-          await child({ ...a, scope, model: d.model, brief: brief.brief }, { threadWt });
+          await child({ ...a, scope, model: d.model, brief: brief.brief, cwd: scope === 'foreman' ? null : threadWt[scope] }, { threadWt });
           await call('orchestrator.finished', { runId, dispatchId: a.dispatchId, status: 'completed', summary: 'DONE' });
           progressed = true;
         } else if (a.type === 'checkout') {
@@ -132,21 +132,20 @@ export async function drive({ call, runId, tmp, child, gate, blocked }) {
 }
 
 /**
- * A child simulator covering every role. `plan` describes the slices and scripted findings.
- * @param {{ call: Function, runId: () => string, tmp: string, plan: any }} p
+ * A child simulator covering every role. `plan` describes the slices and scripted
+ * findings. Repo-scoped children work in their repo thread's worktree (shared isolation).
+ * @param {{ call: Function, runId: () => string, tmp?: string, plan: any }} p
  */
-export function simulatedChildren({ call, runId, tmp, plan }) {
-  let wtN = 0;
-  /** @param {string} root */
-  const worktree = root => {
-    const dir = path.join(tmp, `wt${++wtN}`);
-    git(root, ['worktree', 'add', '-q', '--detach', dir, 'HEAD']);
-    return dir;
+export function simulatedChildren({ call, runId, plan }) {
+  /** @param {any} a */
+  const shared = a => {
+    assert.ok(a.cwd, `${a.dispatchId} must run in its repo thread's worktree`);
+    assert.equal(git(a.cwd, ['status', '--porcelain']), '', `${a.dispatchId} found a dirty shared worktree`);
+    return a.cwd;
   };
   const report = (/** @type {string} */ dispatchId, /** @type {any} */ extra = {}) => call('dispatch.report', { runId: runId(), dispatchId, summary: 'ok', ...extra });
   const w = (/** @type {string} */ p, /** @type {string} */ content) => call('run.write', { runId: runId(), path: p, content });
   const info = () => call('run.info', { runId: runId() });
-  const rootOf = async (/** @type {string} */ repo) => (await info()).repos.find((/** @type {any} */ r) => r.name === repo).root;
 
   let prefixed = false;
   return async (/** @type {any} */ a) => {
@@ -169,25 +168,23 @@ export function simulatedChildren({ call, runId, tmp, plan }) {
         return report(id);
       case 'explainer:plan': await w('explainers/plan.html', '<html><body>plan</body></html>'); return report(id);
       case 'explainer:stack': await w('explainers/stack.html', '<html><body>stack</body></html>'); return report(id);
-      case 'engineer:build':
-      case 'engineer:fix': {
+      case 'engineer:build': {
         const n = Number(id.match(/slice-(\d+)/)[1]);
         const s = (await info()).slices.find((/** @type {any} */ x) => x.n === n);
-        const wt = worktree(await rootOf(s.repo));
-        if (mode === 'build') git(wt, ['switch', '-q', '-c', s.branch, s.baseRef]);
-        else git(wt, ['switch', '-q', s.branch]);
+        const wt = shared(a);
+        git(wt, ['switch', '-q', '-c', s.branch, s.baseRef]);
         const spec = plan.slices.find((/** @type {any} */ x) => x.n === n);
-        commit(wt, mode === 'build' ? spec.files : { [`fix-${n}.txt`]: `fix ${id}\n` }, `${mode}: slice ${n}\n\nSlice: ${n}`);
+        commit(wt, spec.files, `build: slice ${n}\n\nSlice: ${n}`);
         const chk = await call('checks.run', { runId: runId(), dispatchId: id, cwd: wt }, wt);
         assert.equal(chk.ok, true, JSON.stringify(chk.checks));
         git(wt, ['switch', '-q', '--detach']);
-        return report(id, { branch: s.branch, headSha: chk.sha, ...(mode === 'fix' ? { addressed: [{ id: 'x', how: 'fixed' }] } : {}) });
+        return report(id, { branch: s.branch, headSha: chk.sha });
       }
       case 'engineer:feature-fix': {
         const r = await info();
         const repo = a.scope;
         const own = r.slices.filter((/** @type {any} */ x) => x.repo === repo);
-        const wt = worktree(await rootOf(repo));
+        const wt = shared(a);
         git(wt, ['switch', '-q', own[0].branch]);
         commit(wt, { [`feature-fix-${id}.txt`]: 'fixed\n' }, `fix: feature finding\n\nSlice: ${own[0].n}`);
         git(wt, ['switch', '-q', '--detach']);
@@ -196,11 +193,12 @@ export function simulatedChildren({ call, runId, tmp, plan }) {
         for (const s of own) assert.equal((await call('checks.run', { runId: runId(), dispatchId: id, slice: s.n, cwd: wt }, wt)).ok, true);
         if (r.docs?.headSha && r.docs.repo === repo) await call('checks.run', { runId: runId(), dispatchId: id, slice: 'docs', cwd: wt }, wt);
         git(wt, ['switch', '-q', '--detach']);
-        return report(id, { addressed: [{ id: 'x', slice: own[0].n, how: 'fixed' }] });
+        const ids = JSON.parse(await call('run.read', { runId: runId(), path: a.brief.match(/`((?:reviews|feedback)\/[^`]+\.json)`/)[1] })).findings.map((/** @type {any} */ f) => f.id);
+        return report(id, { addressed: ids.map((/** @type {string} */ fid) => ({ id: fid, slice: own[0].n, how: 'fixed' })) });
       }
       case 'docs-writer:default': {
         const r = await info();
-        const wt = worktree(await rootOf(r.docs.repo));
+        const wt = shared(a);
         if (id.startsWith('docs.r1')) git(wt, ['switch', '-q', '-c', r.docs.branch, r.docs.baseRef]);
         else git(wt, ['switch', '-q', r.docs.branch]);
         commit(wt, { [`docs/features/x-${id}.md`]: '# Feature\n' }, 'docs: feature\n\nSlice: docs');
@@ -208,11 +206,11 @@ export function simulatedChildren({ call, runId, tmp, plan }) {
         git(wt, ['switch', '-q', '--detach']);
         return report(id, { branch: r.docs.branch, headSha: chk.sha, docPath: `docs/features/x-${id}.md` });
       }
-      case 'reviewer:slice': return report(id, { findings: (plan.sliceFindings?.[id] || []) });
       case 'feature-reviewer:review': return report(id, { findings: (plan.featureFindings?.[id] || []) });
-      case 'feature-reviewer:crossexam': {
-        const other = JSON.parse(await call('run.read', { runId: runId(), path: a.brief.match(/`(reports\/feature\.review[^`]+)`/)[1] }));
-        return report(id, { responses: (other.findings || []).map((/** @type {any} */ f) => ({ findingId: f.id, stance: plan.disputes?.includes(f.id) ? 'dispute' : 'confirm', reason: 'checked' })), findings: [] });
+      case 'feature-reviewer:recheck': {
+        const open = JSON.parse(await call('run.read', { runId: runId(), path: a.brief.match(/`(reviews\/feature-r\d+-recheck-[ab]\.json)`/)[1] })).findings;
+        const still = open.filter((/** @type {any} */ f) => plan.stillOpen?.includes(f.id));
+        return report(id, { resolved: open.filter((/** @type {any} */ f) => !still.includes(f)).map((/** @type {any} */ f) => f.id), findings: still });
       }
       default:
         throw new Error(`no simulator for ${role}:${mode}`);

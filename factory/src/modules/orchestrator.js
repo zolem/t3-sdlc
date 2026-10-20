@@ -122,7 +122,7 @@ export default {
         for (const r of ws.repos) repos[r.name] = { name: r.name, root: r.root, primary: r.primary, baseBranch: currentBranch(r.root) || 'HEAD', baseSha: sha(r.root), contract: loadContract(r.root) };
         const primary = Object.values(repos).find(r => r.primary);
         const run = {
-          id, title: runTitle, status: 'active', cursor: 'requirements', createdAt: now(), updatedAt: now(),
+          id, title: runTitle, status: 'active', cursor: 'intake', createdAt: now(), updatedAt: now(),
           tcPrefix: runTitle.split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, 4).map(w => w[0].toUpperCase()).join('') + stamp.slice(-2),
           intake,
           repo: primary,
@@ -214,8 +214,8 @@ export default {
       },
     },
     decide: {
-      signature: "factory.orchestrator.decide({ runId: string, gate: 'plan' | 'stack' | 'blocked', decision: 'approve' | 'changes' | 'retry' | 'abort', notes?: string, scope?: string /* which blocked scope */, repos?: string[] /* stack changes: which repos (default all) */ }): Promise<{ status, cursor, actions }>",
-      description: "Foreman: record the human's decision at a gate (approve / changes with notes) or for a blocked scope (retry / abort), then advance.",
+      signature: "factory.orchestrator.decide({ runId: string, gate: 'plan' | 'stack' | 'blocked', decision: 'approve' | 'changes' | 'retry' | 'accept' | 'abort', notes?: string, scope?: string /* which blocked scope */, repos?: string[] /* stack changes: which repos (default all) */ }): Promise<{ status, cursor, actions }>",
+      description: "Foreman: record the human's decision at a gate (approve / changes with notes) or for a blocked scope (retry / abort; accept continues past open feature findings), then advance.",
       tags: ['approve', 'gate', 'review', 'human', 'feedback'],
       handler: ({ runId, gate, decision, notes, scope, repos }, ctx) => {
         mutateRun(ctx.home, runId, run => decide(run, { gate, decision, notes, scope, repos }, envFor(ctx.home, runId)));
@@ -260,7 +260,7 @@ export default {
           ...run.slices.map((/** @type {any} */ s) => `- ${s.n}. [${s.repo}] ${s.title} — ${s.phase}, ${s.fixes} fix round(s), \`${s.branch}\``),
           '',
           '### Feature review',
-          run.feature.last ? `Round ${run.feature.last.round}: ${run.feature.last.blocking} blocking, ${run.feature.last.disputed} disputed, ${run.feature.last.minor} minor.` : 'Not run.',
+          run.feature.last ? `Round ${run.feature.last.round}: ${run.feature.last.blocking} blocking, ${run.feature.last.minor} minor.${run.feature.accepted ? ` The user accepted ${run.feature.accepted.open} open finding(s).` : ''}` : 'Not run.',
           '',
           '### Who did what',
           '| Dispatch | Model | Minutes |',

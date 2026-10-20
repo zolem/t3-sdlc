@@ -42,7 +42,7 @@ Every factory call returns `actions`. Handle all of them in order:
 - **notify** → `t3_thread_send({ threadId: action.threadId, message: action.message })`, then `factory.orchestrator.sent({ runId, id })`.
 - **wait** → end your turn with one short line. A finished child, or a one-line milestone message from a repo thread, wakes you.
 - **gate** → `factory.run.read({ runId, path: action.htmlPath })`, then `html_render` it, then ask the user to approve or request changes. Do not summarize the page. Record the answer with `factory.orchestrator.decide({ runId, gate, decision, notes })`. For PR-stack changes that concern specific repos, pass `repos`.
-- **blocked** → show the scope (`foreman` or a repo) and the reason in one or two lines. Ask retry or abort, then `decide({ runId, gate: "blocked", scope, decision })`.
+- **blocked** → show the scope (`foreman` or a repo) and the reason in one or two lines. Ask which of `action.options` to take (open feature findings also offer **accept**: continue to the PR stack with them shown as open), then `decide({ runId, gate: "blocked", scope, decision })`.
 - **publish** → only after the user approved the PR stack. Call `factory.publish.stack({ runId })`, then `link_pull_request` for every non-null `url`, then `next`.
 - **done** → `factory.orchestrator.summary({ runId })` and show it. Settle this run's repo threads and your own finished child threads (`t3_thread_organize` action "settle"). Leave your own thread alone.
 - **stalled** → `factory.orchestrator.status({ runId })`, and tell the user what looks stuck.

@@ -12,7 +12,7 @@ export function runInfo(run) {
     capabilities: run.capabilities,
     foreman: run.foreman,
     repoState: run.repoState,
-    slices: run.slices.map((/** @type {any} */ s) => ({ n: s.n, repo: s.repo, title: s.title, layer: s.layer, ui: s.ui, branch: s.branch, baseRef: s.baseRef, dependsOn: s.dependsOn, phase: s.phase, headSha: s.headSha, fixes: s.fixes, lastVerify: s.lastVerify, author: s.author })),
+    slices: run.slices.map((/** @type {any} */ s) => ({ n: s.n, repo: s.repo, title: s.title, layer: s.layer, ui: s.ui, branch: s.branch, baseRef: s.baseRef, dependsOn: s.dependsOn, phase: s.phase, headSha: s.headSha, author: s.author })),
     docs: run.docs, feature: run.feature, prs: run.prs,
     gates: Object.fromEntries(Object.entries(run.gates).map(([k, v]) => [k, /** @type {any[]} */ (v).map(g => ({ round: g.round, status: g.status, notes: g.notes }))])),
   };
