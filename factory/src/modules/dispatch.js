@@ -30,7 +30,14 @@ export default {
           // The factory owns the page: fill the template from the validated JSON and the run state.
           const pageCtx = { run, ...files, list: (/** @type {string} */ prefix) => listRunFiles(ctx.home, runId, prefix).map(f => f.path), abs: (/** @type {string} */ rel) => runFile(ctx.home, runId, rel) };
           const doc = JSON.parse(readRunFile(ctx.home, runId, `explainers/${d.mode}.json`));
-          writeRunFile(ctx.home, runId, `explainers/${d.mode}.html`, d.mode === 'plan' ? planPage(doc, pageCtx) : stackPage(doc, pageCtx));
+          let html;
+          try {
+            html = d.mode === 'plan' ? planPage(doc, pageCtx) : stackPage(doc, pageCtx);
+          } catch (err) {
+            ledger(ctx.home, runId, { event: 'dispatch.rejected', dispatchId, errors: [`render: ${err instanceof Error ? err.message : err}`] });
+            throw new Error(`Report rejected. The page could not be built from explainers/${d.mode}.json (${err instanceof Error ? err.message : err}). Check every field matches the shape in your brief, then report again.`);
+          }
+          writeRunFile(ctx.home, runId, `explainers/${d.mode}.html`, html);
         }
         const verdict = Array.isArray(report.findings) && ['feature-reviewer', 'manual-tester'].includes(d.role) ? verdictOf(report.findings) : undefined;
         writeRunFile(ctx.home, runId, `reports/${dispatchId}.json`, JSON.stringify({ dispatchId, role: d.role, mode: d.mode, model: d.target.model, verdict, ...report }, null, 2));

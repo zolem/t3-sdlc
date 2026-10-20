@@ -176,10 +176,10 @@ const DOC_INPUTS = {
   slices: { path: 'slices.json', note: 'Ordered slices (each names its repo and spec file).' },
 };
 
-/** Repos that get a thread: every repo with slices, plus the primary repo (docs). @param {any} run */
+/** Repos that get a thread: every repo with slices, plus the primary repo when it writes the docs. @param {any} run */
 export function activeRepos(run) {
   const names = new Set(run.slices.map((/** @type {any} */ s) => s.repo));
-  names.add(primaryRepo(run).name);
+  if (docsEnabled(run)) names.add(primaryRepo(run).name);
   return Object.keys(run.repos).filter(n => names.has(n));
 }
 
@@ -397,7 +397,8 @@ function stepFeatureVerify(run, env) {
       if (!env.exists(file)) env.write(file, JSON.stringify({ findings: open, engineerResponses: responses.filter((/** @type {any} */ r) => open.some((/** @type {any} */ f) => f.id === r.id)), reviewedHeads: prev.heads }, null, 2));
       parts.push({ source: x, d: ensure(run, F, `feature.recheck.r${fr}.${x}`, { role: 'feature-reviewer', mode: 'recheck', title: `Re-check review ${x.toUpperCase()} findings (round ${fr})`, pinTarget: { ...first.target, family: first.family }, inputs: [DOC_INPUTS.requirements, DOC_INPUTS.slices, { path: file, note: 'Your open findings from the last round, what the engineers did about each, and the slice heads you reviewed.' }], extra: { recheckFile: file } }, env) });
     }
-    const uiTouched = responses.some((/** @type {any} */ r) => !sliceN(run, Number(r.slice)) || sliceN(run, Number(r.slice)).ui);
+    // Fix reports name the slice each fix landed in (validated), so this is exact.
+    const uiTouched = responses.some((/** @type {any} */ r) => sliceN(run, Number(r.slice))?.ui);
     if (featureApp(run) && (uiTouched || prev.blocking.some((/** @type {any} */ f) => f.source === 'validate'))) {
       parts.push({ source: 'validate', d: ensure(run, F, `feature.validate.r${fr}`, { role: 'manual-tester', mode: 'feature', title: `Re-validate the feature (round ${fr})`, inputs: [DOC_INPUTS.requirements, DOC_INPUTS.testPlan, DOC_INPUTS.slices, { path: `reviews/feature-r${fr - 1}.json`, note: 'Last round. Confirm the validation findings are fixed first, then re-walk the main flows the fixes touched.' }] }, env) });
     }
@@ -452,7 +453,8 @@ function routeFixes(run, findings, keyPrefix, title, filePrefix, env) {
  * @param {{ source: string, d: any }[]} parts @param {any[]} [carried]
  */
 export function consolidate(parts, carried = []) {
-  const all = parts.flatMap(({ source, d }) => (d.report.findings || []).map((/** @type {any} */ f) => ({ ...f, source, raisedBy: d.target.model })));
+  // Ids are only unique per report, so qualify them by source ("a:R1", "validate:V2"); re-checks keep them.
+  const all = parts.flatMap(({ source, d }) => (d.report.findings || []).map((/** @type {any} */ f) => ({ ...f, id: String(f.id).startsWith(`${source}:`) ? f.id : `${source}:${f.id}`, source, raisedBy: d.target.model })));
   const blocking = all.filter(f => BLOCKING.has(f.severity) && !f.preexisting);
   const validate = parts.find(p => p.source === 'validate');
   return { blocking, minor: [...carried, ...all.filter(f => !blocking.includes(f))], screenshots: validate?.d.report.screenshots || [] };
@@ -506,7 +508,7 @@ export function actions(run, scope = FOREMAN) {
       return { type: 'blocked', scope: b.scope, reason: b.reason, options, how: `Show the reason to the user and ask: ${options.join(', ')}.${help} Then factory.orchestrator.decide({ runId, gate: "blocked", scope: "${b.scope}", decision }).` };
     })];
   }
-  if (run.cursor === 'done') return [...out, { type: 'done', how: `Call factory.orchestrator.summary({ runId }) and show it.${run.settings.costReport === false ? '' : ' Then show the cost report: factory.run.read({ runId, path: "reports/cost.html" }) and html_render it.'} Settle this run’s repo threads and your own finished child threads.` }];
+  if (run.cursor === 'done') return [...out, { type: 'done', how: `Call factory.orchestrator.summary({ runId }) and show it.${run.settings.costReport === false ? '' : ' If the summary includes a Cost section with a report path, show that page too: factory.run.read({ runId, path: "reports/cost.html" }) and html_render it.'} Settle this run’s repo threads and your own finished child threads.` }];
   if (run.cursor === 'publish') return [...out, { type: 'publish', how: 'The user approved the PR stack. Call factory.publish.stack({ runId }), link every returned PR URL with link_pull_request, then call factory.orchestrator.next({ runId }).' }];
   for (const gate of ['plan', 'stack']) {
     if (run.cursor === `gate:${gate}`) {

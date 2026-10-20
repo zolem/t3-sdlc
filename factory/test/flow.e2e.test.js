@@ -67,11 +67,11 @@ test('single repo: foreman → one repo thread → feature fix routed back → r
   assert.deepEqual(toForeman.map((/** @type {string} */ m) => m.split('.')[0]), ['notes: build done', 'notes: fixes done', 'notes: docs done']);
 
   const r1 = JSON.parse(await call('run.read', { runId, path: 'reviews/feature-r1.json' }));
-  assert.deepEqual(r1.blocking.map((/** @type {any} */ f) => f.id), ['A1', 'B1']);
-  assert.deepEqual(r1.minor.map((/** @type {any} */ f) => f.id), ['A2']);
+  assert.deepEqual(r1.blocking.map((/** @type {any} */ f) => f.id), ['a:A1', 'b:B1'], 'ids are qualified by source so two reviewers can both use R1');
+  assert.deepEqual(r1.minor.map((/** @type {any} */ f) => f.id), ['a:A2']);
   const r2 = JSON.parse(await call('run.read', { runId, path: 'reviews/feature-r2.json' }));
   assert.deepEqual(r2.blocking, []);
-  assert.deepEqual(r2.minor.map((/** @type {any} */ f) => f.id), ['A2'], 'minor findings carry forward without being re-raised');
+  assert.deepEqual(r2.minor.map((/** @type {any} */ f) => f.id), ['a:A2'], 'minor findings carry forward without being re-raised');
 
   assert.equal(log.publish.dryRun, true);
   assert.deepEqual(log.publish.prs.map((/** @type {any} */ p) => p.base), ['main', 'orch/' + runId + '/01-notes-table', 'orch/' + runId + '/02-tags-ui']);
@@ -131,7 +131,7 @@ test('blocking findings left after the fix round: the user can accept and contin
   const plan = {
     slices: [{ n: 1, slug: 'pins', title: 'Pins', layer: 'data', summary: 's', why: 'w', ui: false, testCases: ['TC-001'], spec: 'slices/01.md', files: { 'pins.txt': 'x\n', 'test/pins.test.txt': 'TC-001\n' } }],
     featureFindings: { 'feature.review.r1.a': [{ id: 'A1', severity: 'medium', title: 'plan conflict', detail: 'needs a plan change', slice: 1 }] },
-    stillOpen: ['A1'],
+    stillOpen: ['a:A1'],
   };
   /** @type {any[]} */
   const blocks = [];

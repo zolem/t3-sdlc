@@ -93,6 +93,10 @@ export function validateReport({ run, dispatch, report, files }) {
     }
     case 'engineer:feature-fix': {
       if (!Array.isArray(report.addressed)) errors.push('addressed must list { id, slice, how } for every blocking finding');
+      else {
+        const own = run.slices.filter((/** @type {any} */ x) => x.repo === dispatch.repo).map((/** @type {any} */ x) => x.n);
+        for (const a of report.addressed) if (!own.includes(Number(a?.slice)) && a?.slice !== 'docs') errors.push(`addressed ${a?.id}: slice must be the number of the ${dispatch.repo} slice the fix landed in (or would have, if no change was needed): one of ${own.join(', ')}`);
+      }
       const heads = [];
       for (const s of run.slices.filter((/** @type {any} */ x) => x.repo === dispatch.repo)) {
         const r = branchChecks(s.branch, '', s.baseRef, s.repo);

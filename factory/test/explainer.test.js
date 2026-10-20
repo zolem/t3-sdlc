@@ -92,6 +92,7 @@ test('stack page adds checks, fixes after review, accepted findings and screensh
   };
   const ctx = { run, ...files(map) };
   assert.deepEqual(explainerErrors('stack', doc, ctx), []);
+  assert.match(explainerErrors('stack', { ...doc, followUps: 'none' }, ctx).join('\n'), /followUps must be an array/, 'wrong shapes are rejected, not crashed on');
   const html = stackPage(doc, ctx);
   assert.match(html, /Accepted open finding: Unpin focus lost/);
   assert.match(html, /Fixed after review/);

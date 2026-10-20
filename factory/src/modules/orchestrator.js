@@ -276,7 +276,7 @@ export default {
           ...(run.prs.length ? run.prs.map((/** @type {any} */ p) => `- ${p.title}${p.url ? ` — ${p.url}` : ' (dry run)'}`) : ['Not published.']),
           '',
           '### Slices',
-          ...run.slices.map((/** @type {any} */ s) => `- ${s.n}. [${s.repo}] ${s.title} — ${s.phase}, ${s.fixes} fix round(s), \`${s.branch}\``),
+          ...run.slices.map((/** @type {any} */ s) => `- ${s.n}. [${s.repo}] ${s.title} — ${s.phase}, \`${s.branch}\``),
           '',
           '### Feature review',
           run.feature.last ? `Round ${run.feature.last.round}: ${run.feature.last.blocking} blocking, ${run.feature.last.minor} minor.${run.feature.accepted ? ` The user accepted ${run.feature.accepted.open} open finding(s).` : ''}` : 'Not run.',

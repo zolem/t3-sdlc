@@ -59,7 +59,7 @@ function steps(run, d) {
   const multi = Object.keys(run.repos || {}).length > 1;
   const docsDir = contract.docs?.dir || 'docs/features';
   const setup = contract.setup ? `If dependencies are missing, run \`${contract.setup}\` (checks also do this automatically).` : '';
-  const shared = `YOUR_CWD is this repo's run worktree. Every step of the run for \`${repo.name}\` works in it, one at a time, so start from and leave behind a clean tree: if \`git status --porcelain\` is not empty when you start, reply BLOCKED with what you found instead of cleaning it up.`;
+  const shared = `YOUR_CWD is this repo's run worktree. Every step of the run for \`${repo.name}\` works in it, one at a time, so start from and leave behind a clean tree. The worktree belongs to the run alone, so if \`git status --porcelain\` is not empty when you start, an earlier step crashed mid-way: discard its leftovers with \`git reset --hard && git clean -fd && git switch --detach\` and continue (committed work on slice branches is safe).`;
   const report = (/** @type {string} */ extra) => `Report: \`await factory.dispatch.report({ runId: "${run.id}", dispatchId: "${d.id}", summary${extra} })\`. If it returns errors, fix them and report again.`;
 
   switch (`${d.role}:${d.mode}`) {

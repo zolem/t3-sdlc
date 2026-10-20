@@ -44,7 +44,7 @@ Every factory call returns `actions`. Handle all of them in order:
 - **gate** → `factory.run.read({ runId, path: action.htmlPath })`, then `html_render` it, then ask the user to approve or request changes. Do not summarize the page. Record the answer with `factory.orchestrator.decide({ runId, gate, decision, notes })`. For PR-stack changes that concern specific repos, pass `repos`.
 - **blocked** → show the scope (`foreman` or a repo) and the reason in one or two lines. Ask which of `action.options` to take (open feature findings also offer **accept**: continue to the PR stack with them shown as open), then `decide({ runId, gate: "blocked", scope, decision })`.
 - **publish** → only after the user approved the PR stack. Call `factory.publish.stack({ runId })`, then `link_pull_request` for every non-null `url`, then `next`.
-- **done** → `factory.orchestrator.summary({ runId })` and show it. Unless the action says otherwise, also `factory.run.read({ runId, path: "reports/cost.html" })` and `html_render` it (time, tokens and API list price per phase and model). Settle this run's repo threads and your own finished child threads (`t3_thread_organize` action "settle"). Leave your own thread alone.
+- **done** → `factory.orchestrator.summary({ runId })` and show it. If the summary has a Cost section, also `factory.run.read({ runId, path: "reports/cost.html" })` and `html_render` it (time, tokens and API list price per phase and model). Settle this run's repo threads and your own finished child threads (`t3_thread_organize` action "settle"). Leave your own thread alone.
 - **stalled** → `factory.orchestrator.status({ runId })`, and tell the user what looks stuck.
 
 ## When you are woken

@@ -90,7 +90,13 @@ export function explainerErrors(mode, doc, ctx) {
     doc.diagrams.forEach((/** @type {any} */ d, /** @type {number} */ i) => diagramErrors(`diagrams[${i}]`, d, errors));
     if (!doc.diagrams.some((/** @type {any} */ d) => /^\s*(sequenceDiagram|graph|flowchart)\b/.test(String(d?.after || '')))) errors.push('at least one diagram must be a sequenceDiagram or flowchart showing the changed flow');
   }
+  const arrays = mode === 'plan' ? ['needsYourCall', 'decisions', 'risks', 'engineering'] : ['needsYourCall', 'divergences', 'followUps'];
+  const shape = arrays.filter(k => doc[k] !== undefined && !Array.isArray(doc[k])).map(k => `${k} must be an array (use [] when there is nothing)`);
+  if (shape.length) return [...errors, ...shape];
   for (const [i, n] of (doc.needsYourCall || []).entries()) if (!str(n?.title) || !str(n?.detail)) errors.push(`needsYourCall[${i}] needs title and detail`);
+  for (const k of ['divergences', 'followUps']) for (const [i, x] of (doc[k] || []).entries()) if (!str(x)) errors.push(`${k}[${i}] must be a non-empty string`);
+  for (const [i, e] of (doc.engineering || []).entries()) if (!str(e?.heading) || !Array.isArray(e?.items)) errors.push(`engineering[${i}] needs heading and items: string[]`);
+  for (const [i, d] of (doc.decisions || []).entries()) if (d?.alternatives !== undefined && !Array.isArray(d.alternatives)) errors.push(`decisions[${i}].alternatives must be an array`);
 
   const slices = slicesOf(ctx);
   const cards = new Map((Array.isArray(doc.slices) ? doc.slices : []).map((/** @type {any} */ c) => [Number(c?.n), c]));
@@ -104,11 +110,12 @@ export function explainerErrors(mode, doc, ctx) {
     if (mode === 'plan' && !str(c.story)) errors.push(`slices[n=${s.n}].story is required: why it comes here and what it unlocks`);
     if (mode === 'stack' && (!str(c.whatChanged) || !str(c.whyThisWay))) errors.push(`slices[n=${s.n}] needs whatChanged and whyThisWay`);
     if (!Array.isArray(c.verify) || c.verify.length === 0) errors.push(`slices[n=${s.n}].verify needs 1-4 concrete things a reviewer should check`);
+    if (c.focus !== undefined && !Array.isArray(c.focus)) errors.push(`slices[n=${s.n}].focus must be an array of paths`);
   }
   for (const n of cards.keys()) if (!slices.some((/** @type {any} */ s) => s.n === n)) errors.push(`slices has n=${n}, which is not a slice in this run`);
 
   const tcs = planTestIds(ctx);
-  const tests = new Map((Array.isArray(doc.tests) ? doc.tests : []).map((/** @type {any} */ t) => [t?.id, t]));
+  const tests = new Map((Array.isArray(doc.tests) ? doc.tests : []).filter((/** @type {any} */ t) => t && typeof t === 'object').map((/** @type {any} */ t) => [t.id, t]));
   if (!Array.isArray(doc.tests)) errors.push('tests must list every test case: { id, what, why }');
   const missing = tcs.filter(id => !tests.has(id));
   if (missing.length) errors.push(`tests is missing: ${missing.join(', ')}`);
