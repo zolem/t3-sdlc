@@ -7,6 +7,7 @@
 
 import { renderMermaidSVG } from 'beautiful-mermaid';
 import { testCaseIds } from './contracts.js';
+import { THEME_FALLBACK } from './theme.js';
 
 /**
  * @typedef {{ run: any, exists: (rel: string) => boolean, read: (rel: string) => string, list: (prefix: string) => string[], abs: (rel: string) => string }} PageCtx
@@ -160,7 +161,7 @@ details{margin-top:24px}summary{cursor:pointer;color:var(--muted-foreground);fon
 `;
 
 /** @param {string} title @param {string} body */
-const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${CSS}</style></head><body>${body}</body></html>`;
+const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${THEME_FALLBACK}${CSS}</style></head><body>${body}</body></html>`;
 
 /** @param {any[]} diagrams */
 function diagramsHtml(diagrams) {
@@ -203,7 +204,7 @@ function stackDiagram(slices) {
 
 /** @param {any} s @param {Map<string, any>} tests */
 function caseRows(s, tests) {
-  return [...(s.testCases || []).map((/** @type {string} */ id) => [id, 'automated']), ...(s.manualCases || []).map((/** @type {string} */ id) => [id, 'browser'])].map(([id, how]) => ({ id, how, t: tests.get(id) }));
+  return (s.testCases || []).map((/** @type {string} */ id) => ({ id, t: tests.get(id), auto: (s.tests || []).find((/** @type {any} */ x) => x.id === id) }));
 }
 
 /**
@@ -215,7 +216,7 @@ export function planPage(doc, ctx) {
   const slices = slicesOf(ctx);
   const tests = new Map((doc.tests || []).map((/** @type {any} */ t) => [t.id, t]));
   const cards = new Map((doc.slices || []).map((/** @type {any} */ c) => [Number(c.n), c]));
-  const owner = new Map(slices.flatMap((/** @type {any} */ s) => caseRows(s, tests).map(r => [r.id, { s, how: r.how }])));
+  const owner = new Map(slices.flatMap((/** @type {any} */ s) => caseRows(s, tests).map(r => [r.id, { s }])));
   const multi = Object.keys(run.repos || {}).length > 1;
   const body = `
 <h1>${esc(run.title)}</h1>
@@ -229,13 +230,14 @@ ${stackDiagram(slices)}
 ${each(slices, s => {
     const c = cards.get(s.n) || {};
     const rows = caseRows(s, tests);
-    return `<div class="card"><h3>${s.n}. ${md(s.title)}</h3><p>${multi ? `<span class="chip">${esc(s.repo)}</span>` : ''}<span class="chip">${esc(s.layer)}</span>${s.ui ? '<span class="chip warn">users see this</span>' : ''}</p><p>${md(s.summary)}</p><p class="muted">${md(c.story || s.why)}</p>${rows.length ? `<p class="muted">Tests: ${rows.map(r => `<code>${esc(r.id)}</code>${r.how === 'browser' ? ' (browser)' : ''}`).join(', ')}</p>` : ''}<div class="verify"><b>Verify</b>${bullets(c.verify)}</div></div>`;
+    return `<div class="card"><h3>${s.n}. ${md(s.title)}</h3><p>${multi ? `<span class="chip">${esc(s.repo)}</span>` : ''}<span class="chip">${esc(s.layer)}</span>${s.ui ? '<span class="chip warn">users see this</span>' : ''}</p><p>${md(s.summary)}</p><p class="muted">${md(c.story || s.why)}</p>${rows.length ? `<p class="muted">Tests: ${rows.map(r => `<code>${esc(r.id)}</code>`).join(', ')}</p>` : ''}<div class="verify"><b>Verify</b>${bullets(c.verify)}</div></div>`;
   })}
 <h2>Tests, and why each exists</h2>
-<table><tr><th>Test</th><th>What it proves</th><th>Why we need it</th><th>How</th></tr>
+<p class="muted">Every case is run through by the manual tester once the feature is built; each engineer decides which of their cases to automate against regressions.</p>
+<table><tr><th>Test</th><th>What it proves</th><th>Why we need it</th><th>Slice</th></tr>
 ${each(doc.tests || [], t => {
     const o = owner.get(t.id);
-    return `<tr><td><code>${esc(t.id)}</code></td><td>${md(t.what)}</td><td>${md(t.why)}</td><td>${o ? `${o.how === 'browser' ? 'browser walk' : 'automated'}, slice ${o.s.n}` : '<span class="chip bad">unassigned</span>'}</td></tr>`;
+    return `<tr><td><code>${esc(t.id)}</code></td><td>${md(t.what)}</td><td>${md(t.why)}</td><td>${o ? `slice ${o.s.n}` : '<span class="chip bad">unassigned</span>'}</td></tr>`;
   })}</table>
 ${doc.decisions?.length ? `<h2>Decisions</h2><table><tr><th>Choice</th><th>Why</th><th>Alternatives</th></tr>${each(doc.decisions, d => `<tr><td>${md(d.choice)}</td><td>${md(d.why)}</td><td>${md((d.alternatives || []).join('; '))}</td></tr>`)}</table>` : ''}
 ${doc.risks?.length ? `<h2>Risks</h2>${each([...doc.risks].sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level)), r => `<div class="card"><span class="chip ${r.level === 'high' ? 'bad' : r.level === 'medium' ? 'warn' : ''}">${esc(r.level)}</span> ${md(r.risk)}${r.mitigation ? `<p class="muted">${md(r.mitigation)}</p>` : ''}</div>`)}` : ''}
@@ -280,12 +282,16 @@ export function stackPage(doc, ctx) {
   const multi = Object.keys(run.repos || {}).length > 1;
   const tests = new Map((doc.tests || []).map((/** @type {any} */ t) => [t.id, t]));
   const cards = new Map((doc.slices || []).map((/** @type {any} */ c) => [Number(c.n), c]));
-  const owner = new Map(slices.flatMap((/** @type {any} */ s) => caseRows(s, tests).map(r => [r.id, { s, how: r.how }])));
+  const owner = new Map(slices.flatMap((/** @type {any} */ s) => caseRows(s, tests).map(r => [r.id, { s, auto: r.auto }])));
   const review = ctx.exists(`reviews/feature-r${run.feature.round}.json`) ? JSON.parse(ctx.read(`reviews/feature-r${run.feature.round}.json`)) : { blocking: [], minor: [] };
   const checks = new Map(slices.map((/** @type {any} */ s) => [s.n, checksOf(ctx, s.headSha)]));
   const passing = [...checks.values()].filter(c => c?.ok).length;
   const validated = run.dispatches.filter((/** @type {any} */ d) => d.role === 'manual-tester' && d.status === 'done');
   const lastValidation = validated[validated.length - 1];
+  // Latest result per case across the run-throughs (a re-check only re-runs some cases).
+  /** @type {Map<string, any>} */
+  const results = new Map();
+  for (const d of validated) for (const c of d.report?.cases || []) results.set(c.id, c);
   const browserOpen = review.blocking.filter((/** @type {any} */ f) => f.source === 'validate').length;
   const spots = troubleSpots(ctx);
   const shots = ctx.list('screenshots/').filter(p => /\.(png|jpe?g|gif|webp)$/i.test(p));
@@ -302,7 +308,8 @@ export function stackPage(doc, ctx) {
 <div class="kpi"><b>${risk ? `${risk}/5` : '—'}</b><span>review risk${doc.risk?.why ? `: ${md(doc.risk.why)}` : ''}</span></div>
 <div class="kpi"><b>${passing}/${slices.length}</b><span>slices with passing checks on their final commit</span></div>
 <div class="kpi"><b>${review.blocking.length ? `${review.blocking.length} open` : 'clean'}</b><span>feature review after ${Math.max(0, run.feature.round - 1)} fix round(s); ${review.minor.length} minor follow-up(s)</span></div>
-<div class="kpi"><b>${lastValidation ? (browserOpen ? `${browserOpen} issue(s)` : 'walked') : 'skipped'}</b><span>browser validation${lastValidation ? ` by ${esc(lastValidation.target.model)}` : ''}</span></div>
+<div class="kpi"><b>${lastValidation ? `${[...results.values()].filter(c => c.result === 'pass').length}/${(doc.tests || []).length}` : 'skipped'}</b><span>test cases passed in the browser run-through${lastValidation ? ` (${esc(lastValidation.target.model)})` : ''}${browserOpen ? `; ${browserOpen} open issue(s)` : ''}</span></div>
+<div class="kpi"><b>${slices.flatMap((/** @type {any} */ s) => s.tests || []).filter((/** @type {any} */ x) => x.automated).length}/${(doc.tests || []).length}</b><span>test cases automated against regressions</span></div>
 </div>
 ${calls.length ? `<h2>Needs your call</h2>${each(calls, n => `<div class="card call"><h3>${md(n.title)}</h3><p>${md(n.detail)}</p>${n.default ? `<p class="muted">If nobody objects: ${md(n.default)}</p>` : ''}</div>`)}` : ''}
 <h2>How the system changed</h2>
@@ -325,11 +332,13 @@ ${mine.length ? `<div class="shots">${each(mine, p => `<figure><img src="${esc(c
 </div>`;
   })}
 <h2>Tests, and why each exists</h2>
-<table><tr><th>Test</th><th>What it proves</th><th>Why we need it</th><th>How</th><th>Status</th></tr>
+<table><tr><th>Test</th><th>What it proves</th><th>Why we need it</th><th>Regression protection</th><th>Run-through</th></tr>
 ${each(doc.tests || [], t => {
     const o = owner.get(t.id);
-    const status = !o ? '<span class="chip bad">unassigned</span>' : o.how === 'browser' ? (lastValidation ? (browserOpen ? '<span class="chip warn">see findings</span>' : '<span class="chip ok">walked</span>') : '<span class="chip warn">not walked</span>') : checks.get(o.s.n)?.ok ? '<span class="chip ok">passing</span>' : '<span class="chip bad">no passing run</span>';
-    return `<tr><td><code>${esc(t.id)}</code></td><td>${md(t.what)}</td><td>${md(t.why)}</td><td>${o ? `${o.how === 'browser' ? 'browser walk' : 'automated'}, slice ${o.s.n}` : '—'}</td><td>${status}</td></tr>`;
+    const r = results.get(t.id);
+    const run_ = r ? `<span class="chip ${r.result === 'pass' ? 'ok' : r.result === 'fail' ? 'bad' : 'warn'}">${esc(r.result)}</span>${r.note ? ` <span class="muted">${md(r.note)}</span>` : ''}` : '<span class="chip warn">not run</span>';
+    const how = !o ? '—' : o.auto?.automated ? `automated <span class="muted">${md(o.auto.where)}</span>${checks.get(o.s.n)?.ok ? ' <span class="chip ok">passing</span>' : ' <span class="chip bad">no passing run</span>'}` : o.auto ? `manual only <span class="muted">${md(o.auto.why)}</span>` : '—';
+    return `<tr><td><code>${esc(t.id)}</code></td><td>${md(t.what)}</td><td>${md(t.why)}</td><td>slice ${o ? o.s.n : '?'}: ${how}</td><td>${run_}</td></tr>`;
   })}</table>
 ${doc.divergences?.length ? `<h2>Different from the plan</h2>${bullets(doc.divergences)}` : ''}
 ${doc.followUps?.length || review.minor.length ? `<h2>Follow-ups</h2>${bullets(doc.followUps)}${review.minor.length ? `<ul>${each(review.minor, f => `<li><span class="chip">${esc(f.severity)}</span>${md(f.title)}${f.file ? ` <code>${esc(f.file)}</code>` : ''}</li>`)}</ul>` : ''}` : ''}

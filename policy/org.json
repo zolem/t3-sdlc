@@ -2,6 +2,25 @@
   "version": 1,
   "notes": "Org default routing. First available target wins; later ones are fallbacks. Tune from `factory.ledger.stats()`. Override per user in ~/.t3-sdlc/policy.json or per repo in .orchestrate/policy.json (a role entry there replaces this role's targets). Top tier: claude-opus-5-5 and gpt-6.1-sol. Fable and Astra are reserved for specific scenarios; add them per repo or per run, not here. OpenCode models bill at API prices: keep them out of defaults; opt in per repo or run.",
   "roles": {
+    "coordinator": {
+      "targets": [
+        {
+          "providerInstanceId": "claudeAgent",
+          "model": "claude-haiku-5-5",
+          "options": {
+            "effort": "low"
+          }
+        },
+        {
+          "providerInstanceId": "codex",
+          "model": "gpt-6-luna",
+          "options": {
+            "reasoningEffort": "low"
+          }
+        }
+      ],
+      "note": "The run thread and repo threads: they only carry out the factory's actions, so a fast cheap model is enough. The user's own thread keeps whatever model they chose."
+    },
     "product-manager": {
       "targets": [
         {

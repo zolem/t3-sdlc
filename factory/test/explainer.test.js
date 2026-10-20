@@ -14,7 +14,7 @@ const files = (/** @type {Record<string, string>} */ map) => ({
 const SLICES = [
   { n: 1, slug: 'pin-column', title: 'Pinned-at column', layer: 'data', summary: 'Adds notes.pinned_at and a 3-pin cap.', why: 'Everything else reads it.', ui: false, repo: 'notes', testCases: ['TC-PN-001', 'TC-PN-002'], spec: 'slices/01.md' },
   { n: 2, slug: 'pin-api', title: 'Pin and unpin endpoints', layer: 'api', summary: 'POST/DELETE /notes/:id/pin.', why: 'The UI calls these.', ui: false, repo: 'notes', dependsOn: [1], testCases: ['TC-PN-003'], spec: 'slices/02.md' },
-  { n: 3, slug: 'pin-controls', title: 'Pin controls in the list', layer: 'ui', summary: 'Pin button, pinned section on top.', why: 'What users see.', ui: true, repo: 'notes', dependsOn: [2], testCases: ['TC-PN-004'], manualCases: ['TC-PN-005'], spec: 'slices/03.md' },
+  { n: 3, slug: 'pin-controls', title: 'Pin controls in the list', layer: 'ui', summary: 'Pin button, pinned section on top.', why: 'What users see.', ui: true, repo: 'notes', dependsOn: [2], testCases: ['TC-PN-004', 'TC-PN-005'], spec: 'slices/03.md' },
 ];
 const TESTPLAN = '# Test plan\nTC-PN-001 TC-PN-002 TC-PN-003 TC-PN-004 TC-PN-005\n';
 const SEQ_BEFORE = 'sequenceDiagram\n  participant U as User\n  participant W as Web\n  participant A as API\n  U->>W: open notes\n  W->>A: GET /notes\n  A-->>W: notes by date\n  W-->>U: list';
@@ -61,7 +61,7 @@ test('plan JSON is validated against the run: every slice, every test case, rend
   assert.match(errs, /does not render/);
   const html = planPage(PLAN, ctx);
   assert.match(html, /Needs your call/);
-  assert.match(html, /browser walk, slice 3/);
+  assert.match(html, /slice 3<\/td>/);
   assert.doesNotMatch(html, /<script/);
   if (process.env.EXPLAINER_OUT) fs.writeFileSync(`${process.env.EXPLAINER_OUT}/plan.html`, html);
 });
@@ -69,9 +69,9 @@ test('plan JSON is validated against the run: every slice, every test case, rend
 test('stack page adds checks, fixes after review, accepted findings and screenshots from the run', () => {
   const run = {
     id: 'r', title: 'Pin notes', repos: { notes: {} }, feature: { round: 2, accepted: { round: 2, open: 1 } },
-    slices: SLICES.map((s, i) => ({ ...s, branch: `orch/r/0${s.n}-${s.slug}`, headSha: `sha${i}` })),
+    slices: SLICES.map((s, i) => ({ ...s, branch: `orch/r/0${s.n}-${s.slug}`, headSha: `sha${i}`, tests: s.testCases.map(id => (id === 'TC-PN-005' ? { id, automated: false, why: 'needs a real reload' } : { id, automated: true, where: 'test/pin.test.ts' })) })),
     dispatches: [
-      { role: 'manual-tester', status: 'done', target: { model: 'gpt-6-luna' } },
+      { role: 'manual-tester', status: 'done', target: { model: 'gpt-6-luna' }, report: { cases: PLAN.tests.map(t => ({ id: t.id, result: t.id === 'TC-PN-005' ? 'fail' : 'pass' })) } },
       { mode: 'feature-fix', status: 'done', report: { addressed: [{ id: 'A1', slice: 1, how: 'Moved the count into the insert transaction.' }] } },
     ],
   };
@@ -99,5 +99,7 @@ test('stack page adds checks, fixes after review, accepted findings and screensh
   assert.match(html, /Moved the count into the insert transaction/);
   assert.match(html, /\/runs\/x\/files\/screenshots\/feature\.validate\.r1\/slice-3-pinned\.png/);
   assert.match(html, /3\/3/);
+  assert.match(html, /4\/5<\/b><span>test cases passed/);
+  assert.match(html, /manual only <span class="muted">needs a real reload/);
   if (process.env.EXPLAINER_OUT) fs.writeFileSync(`${process.env.EXPLAINER_OUT}/stack.html`, html);
 });

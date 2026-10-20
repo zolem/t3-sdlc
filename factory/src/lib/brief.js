@@ -68,11 +68,11 @@ function steps(run, d) {
         shared,
         `Create the slice branch: \`git switch -c ${slice.branch} ${d.extra.baseRef}\` (if it already exists from an earlier attempt: \`git switch ${slice.branch}\`). ${setup}`,
         'Implement only this slice. Make small atomic commits, one per logical change, each leaving the build green. End every commit message with a `Slice: ' + slice.n + '` trailer.',
-        `Write the tests the spec asks for. Tag each test name with its test-case id (${(slice.testCases || []).join(', ') || 'see the spec'}).${slice.manualCases?.length ? ` These are verified in a browser by the manual tester once the whole feature is built, so make them work but do not fake tests for them: ${slice.manualCases.join(', ')}.` : ''}`,
+        `Make every assigned test case pass: ${(slice.testCases || []).join(', ') || '(none assigned; follow the spec)'}. Decide which to automate for regression protection: automate each one the repo's existing test setup can assert reliably, with its TC id in the test name; for any you do not automate, give a concrete reason (the manual tester runs through every case regardless). Do not add new test tooling.`,
         'Nobody reviews this slice on its own: the whole feature is reviewed once it is built, and the repo\'s checks are your gate. Before you commit, re-read your diff against the spec as a reviewer would (missed acceptance criteria, edge cases, error handling, leftover debug code).',
         `Run the deterministic gate: \`await factory.checks.run({ runId: "${run.id}", dispatchId: "${d.id}", cwd: YOUR_CWD })\`. Fix every failure and re-run until ok is true. Results are tied to the HEAD commit, so re-run after any new commit.`,
         'Release the branch for the next step: `git switch --detach`, and leave the tree clean.',
-        report(`, branch: "${slice.branch}", headSha: "<git rev-parse ${slice.branch}>"`),
+        report(`, branch: "${slice.branch}", headSha: "<git rev-parse ${slice.branch}>", tests: [{ id: "TC-…", automated: true, where: "test/file.test.ts" } | { id: "TC-…", automated: false, why: "…" }] /* one entry per assigned case */`),
       ];
     case 'engineer:feature-fix':
       return [
@@ -85,17 +85,17 @@ function steps(run, d) {
         report(', addressed: [{ id, slice, how }]'),
       ];
     case 'manual-tester:feature': {
-      const manual = run.slices.flatMap((/** @type {any} */ x) => x.manualCases || []);
+      const recheck = d.inputs.some((/** @type {any} */ i) => i.path.startsWith('reviews/'));
       return [
         `Start the whole system: \`const app = await factory.app.up({ runId: "${run.id}", dispatchId: "${d.id}" })\` → { url, logFile }. It serves every repo from its finished stack (each repo thread prepared its checkout); do not edit or switch anything.`,
-        'Drive a real browser with the T3 preview tools (preview_open with open=false and reuseExistingTab=false, then preview_snapshot / preview_click / preview_type / preview_press / preview_wait_for). Keep using the tabId preview_open returns.',
-        d.inputs.some((/** @type {any} */ i) => i.path.startsWith('reviews/'))
-          ? 'This is a re-check after fixes: first confirm each validation finding in the last round is fixed (report the ones that are not, keeping their ids), then re-walk the main flows the fixes touched. Do not repeat the whole walk.'
-          : `Walk every user story and test case end to end${manual.length ? `, and above all the browser-only cases nobody else checks: ${manual.join(', ')}` : ''}, including the edge cases a real user would hit (empty, too long, double submit, refresh, back button, slow network if relevant).`,
-        `Capture evidence: \`preview_snapshot\` with save=true gives a screenshotPath; copy it into the run with \`await factory.run.attach({ runId: "${run.id}", from: screenshotPath, as: "screenshots/${d.id}/slice-<N>-<step>.png" })\`, where N is the slice whose change the screenshot shows. Take one per meaningful state (before, after, error).`,
+        'Drive a real browser with the T3 preview tools: preview_open({ url, open: true, reuseExistingTab: false }) (hidden tabs cannot be screenshotted), then preview_snapshot / preview_click / preview_type / preview_press / preview_wait_for. Keep using the tabId preview_open returns.',
+        recheck
+          ? 'This is a re-check after fixes: first confirm each validation finding in the last round is fixed (report the ones that are not, keeping their ids), then re-run the test cases the fixes touched. Do not repeat the whole run-through.'
+          : 'Run through EVERY test case in test-plan.md end to end, as a user would, including its edge cases (empty, too long, double submit, refresh, back button). Each slice\'s `tests` (factory.run.info) says which cases are also automated; run them all anyway.',
+        `Capture evidence: \`preview_snapshot\` with save=true gives a screenshotPath; copy it into the run with \`await factory.run.attach({ runId: "${run.id}", from: screenshotPath, as: "screenshots/${d.id}/slice-<N>-<step>.png" })\`, where N is the slice whose change the screenshot shows. Take one per meaningful state (before, after, error). If the screenshot tool keeps failing, carry on testing and report \`noScreenshots: "<what failed>"\` instead of screenshots. Never attach a screenshot from an earlier round.`,
         `Stop the app when done: \`await factory.app.down({ runId: "${run.id}", dispatchId: "${d.id}" })\`.`,
         `Write a short human-readable report to run file \`verification/${d.id}.md\` (what you tried, what you saw, screenshots).`,
-        report(', findings: Finding[], screenshots: string[] /* run paths */'),
+        report(`, cases: [{ id: "TC-…", result: "pass" | "fail" | "not-run", note? }]${recheck ? ' /* the cases you re-ran */' : ' /* every test case */'}, findings: Finding[] /* every failed case, plus anything else you found */, screenshots: string[] /* run paths */, noScreenshots?: string`),
       ];
     }
     case 'feature-reviewer:review':
@@ -104,6 +104,7 @@ function steps(run, d) {
         `Diffs per slice: \`await factory.git.sliceDiff({ runId: "${run.id}", slice: N })\`; whole stack: \`await factory.git.sliceDiff({ runId: "${run.id}", slice: "all" })\`. Read-only: never check out or edit.`,
         `History guard: \`await factory.history.forDiff({ runId: "${run.id}", slice: "all" })\`. Deterministic checks already passed on every slice (\`factory.checks.results({ runId: "${run.id}", slice: N })\`); do not repeat what they prove.`,
         'You are one of two independent reviewers from different model families. Assume the other reviewer is good; your value is what they might miss. Hunt for: requirement gaps, cross-slice integration bugs, unhandled edge cases, data integrity, security, broken history intent, missing tests.',
+        `Check regression protection: each slice's \`tests\` (factory.run.info({ runId: "${run.id}" })) says which test cases its engineer automated (and where) and why the rest were not. Confirm the automated tests really assert their case and the reasons hold; flag P0 behaviour or cross-slice integration nothing would catch if it regressed (category "tests").`,
         'Set `slice` on each finding when you can tell where it belongs. Severity drives the outcome: critical/high/medium findings are fixed and then re-checked by you; low/nit are follow-ups and are never re-raised.',
         report(', findings: Finding[]'),
       ];
@@ -132,9 +133,9 @@ function steps(run, d) {
     case 'slice-planner:default':
       return [
         'Write each slice spec to the run as `slices/NN-<slug>.md` (factory.run.write), then write `slices.json`:',
-        '```json\n{ "slices": [ { "n": 1, "slug": "notes-table", "title": "…", "layer": "data|api|ui|infra|docs|other", "summary": "what this PR contains", "why": "what it unlocks for the next slice / the user", "dependsOn": [], "ui": false, "testCases": ["TC-001"], "manualCases": [], "spec": "slices/01-notes-table.md" } ] }\n```',
+        '```json\n{ "slices": [ { "n": 1, "slug": "notes-table", "title": "…", "layer": "data|api|ui|infra|docs|other", "summary": "what this PR contains", "why": "what it unlocks for the next slice / the user", "dependsOn": [], "ui": false, "testCases": ["TC-001"], "spec": "slices/01-notes-table.md" } ] }\n```',
         ...(multi ? [`This run spans several repos (${Object.values(run.repos).map((/** @type {any} */ r) => `\`${r.name}\`${r.primary ? ' (primary)' : ''}`).join(', ')}). Every slice changes exactly one repo: add \`"repo": "<name>"\` to each. Order slices so dependencies land first across repos (e.g. the service endpoint before the UI that calls it); each repo becomes its own PR stack.`] : []),
-        'Every TC id in test-plan.md must be assigned to exactly one slice: the one that makes it pass. Put it in `testCases` when the engineer writes an automated test for it (a deterministic check verifies each id appears in that slice\'s tests), or in `manualCases` when only a person in a browser can verify it (the manual tester walks those once the feature is built; only allowed on `ui: true` slices). Follow the test plan\'s own automated/manual call for each case; if you disagree, say so in the slice spec rather than silently moving it. `ui` is true when the slice changes what a user sees or does in the browser.',
+        'Every TC id in test-plan.md goes in the `testCases` of exactly one slice: the one that makes it pass. Whether a case gets automated is the engineer\'s call, not yours; the manual tester runs through every case once the feature is built. `ui` is true when the slice changes what a user sees or does in the browser.',
         report(''),
       ];
     case 'explainer:plan':

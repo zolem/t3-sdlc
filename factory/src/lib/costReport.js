@@ -4,6 +4,7 @@
 // an SVG timeline. Written to the run as reports/cost.json and reports/cost.html.
 // It shows what a run would cost on pay-as-you-go APIs, whatever plan paid for it.
 
+import { THEME_FALLBACK } from './theme.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONTENT_ROOT } from './store.js';
@@ -93,7 +94,7 @@ export const PHASES = [
   { id: 'docs', label: 'Docs' },
   { id: 'stack', label: 'Stack explainer' },
   { id: 'other', label: 'Other' },
-  { id: 'coordination', label: 'Coordination (foreman, repo threads)' },
+  { id: 'coordination', label: 'Coordination (your thread, run and repo threads)' },
 ];
 
 const zeroTokens = () => ({ input: 0, cached: 0, cacheWrite: 0, output: 0, total: 0 });
@@ -302,7 +303,7 @@ export function renderCostHtml(rep) {
   const coordRows = rep.coordinators.map(c => tr([td(esc(c.label)), td(esc(label(c.provider, c.model))), td(c.requests, true), td(tok(c.tokens.total), true), td(usd(c.usd), true), td(`${flag(c)}${c.tiers?.includes('long') ? ' <span class="f t" title="some requests were priced at the long-context tier">long-context tier</span>' : ''}`)]));
   const dispatchRows = rep.dispatches.map(d => tr([td(`<code>${esc(d.id)}</code>`), td(esc(PHASES.find(p => p.id === d.phase)?.label || d.phase)), td(esc(`${d.role}${d.mode && d.mode !== 'default' ? `:${d.mode}` : ''}`)), td(esc(label(d.provider, d.model))), td(mins(d.minutes), true), td(d.requests, true), td(tok(d.tokens.total), true), td(usd(d.usd ?? d.estimatedUsd), true), td(`${flag(d)}${d.outcome === 'failed' ? ' <span class="f u">failed</span>' : ''}${d.tiers?.includes('long') ? ' <span class="f t" title="some requests were priced at the long-context tier">long-context</span>' : ''}`)]));
 
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Cost · ${esc(rep.title)}</title><style>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Cost · ${esc(rep.title)}</title><style>${THEME_FALLBACK}
 body{font-family:var(--font-sans,system-ui);color:var(--foreground);margin:0;line-height:1.45;font-size:14px}
 h1{font-size:16px;margin:0 0 4px;font-weight:650}.sub{color:var(--muted-foreground);font-size:12px;margin-bottom:14px}
 h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground);margin:22px 0 8px;font-weight:600}

@@ -3,25 +3,27 @@
 A T3 Code **factory**: tell any T3 thread "orchestrate ABC-123" (or a brief) in a repo and a full SDLC runs. Each step is delegated to the provider/model your policy picks, and the run stops for you twice: to approve the plan, and to approve the PR stack.
 
 ```
-You ──orchestrate──▶  foreman thread ── plans, gates, cross-repo review, publish
-                         │ launches one T3 thread per repo (one worktree per repo)
-                         ▼
-                 repo threads ── build · fix · docs for their repo
+You ──orchestrate──▶  your thread ── starts the run; hears only gates, blocks, the finish
+                         │ launches the run thread (cheap coordinator model)        ▲ one-line pings,
+                         ▼                                                          │ links to pages
+                  run thread ── plans, builds the primary repo, reviews, publishes ─┘
+                         │ other repos get their own thread (one worktree per repo)
                          │ delegate_task(target = policy.resolve(role))
                          ▼
-        child agents (Opus / Sol / Sonnet / Luna / Haiku …) ──▶ t3-sdlc CLI (search + exec)
-                         ▲                                      pipeline · roles · policy · checks
-     one-line milestone messages between threads               app · git · history · ledger · publish
+        child agents (Opus / Sol / Sonnet / Luna / DeepSeek …) ──▶ t3-sdlc CLI (search + exec)
+                                                                  pipeline · roles · policy · checks
+                                                                  app · git · history · ledger · publish
 ```
 
 ## How a run flows
 
-1. **Plan:** product-manager ∥ context-curator → architect ∥ qa-analyst → slice-planner → explainer.
-2. **Gate 1:** you approve the plan or request changes. The plan is shown as an HTML page in the thread: before/after sequence and flow diagrams of how the system changes, the slices in order with what to verify in each, and every test with why it exists (never test code). The explainer only writes the judgment calls and Mermaid; the factory renders the diagrams offline and fills in everything it already knows.
-3. **Build, in one thread per repo:** the foreman launches a T3 thread for each repo, in one worktree that every step for that repo shares, one at a time. Each slice is one stacked PR, built in dependency order (table → endpoint → UI), even across repos.
-   - The engineer implements the slice and self-reviews it against the spec.
+0. **Threads:** your thread starts the run and launches a **run thread** on the cheap `coordinator` model, which does all the orchestration. Your thread stays quiet until a person must decide something: it opens the gate page in T3's preview with a link and waits for your answer.
+1. **Plan:** product-manager ∥ context-curator → architect ∥ qa-analyst → slice-planner → explainer. QA lists the test cases that prove the feature works (edge cases, error handling, graceful failure) and keep it working; it never decides how they are tested.
+2. **Gate 1:** you approve the plan or request changes. The plan is a page served from the run folder and opened by link: before/after sequence and flow diagrams of how the system changes, the slices in order with what to verify in each, and every test with why it exists (never test code). The explainer only writes the judgment calls and Mermaid; the factory renders the diagrams offline and fills in everything it already knows.
+3. **Build:** the run thread builds the primary repo in its own worktree; every other repo gets its own thread and worktree. Every step for a repo shares that worktree, one at a time. Each slice is one stacked PR, built in dependency order (table → endpoint → UI), even across repos.
+   - The engineer implements the slice, self-reviews it against the spec, and decides which of its test cases to automate against regressions (each automated one must name its TC id; each manual-only one needs a reason).
    - `checks.run` (lint, types, tests…) must pass. Engineers cannot report done without it. There is no per-slice review.
-4. **Feature review, once:** two reviewers from different families (Opus and Sol by default) review the whole stack independently while a manual tester walks every user story in T3's browser.
+4. **Feature review, once:** two reviewers from different families (Opus and Sol by default) review the whole stack independently, including whether the automation calls hold, while a manual tester runs through every test case in T3's browser and reports a result per case.
    - Blocking findings are fixed in the slice they belong to, then the stack is restacked.
    - Each reviewer re-checks only its own findings against what changed. The browser walk re-runs only if a fix touched a UI slice or validation had failed.
    - Still blocked after the fix round (`maxFeatureFixRounds`, default 1)? You choose: accept and continue with the findings shown as open, one more round, or abort.
@@ -108,7 +110,7 @@ factory/            the t3-sdlc CLI (Code Mode: search + exec). Tests: npm test
   src/modules/      the factory.<module>.<fn>() surface agents call
 policy/org.json     org routing defaults
 roles/*.md          role briefs (prompts you iterate on)
-skills/             orchestrate (foreman), orchestrate-setup, generate-brief (linked); orchestrate-repo (served by `t3-sdlc skill`)
+skills/             orchestrate (your thread), orchestrate-setup, generate-brief (linked); orchestrate-run, orchestrate-repo (served by `t3-sdlc skill`)
 docs/               repo-setup.md (contract reference), factory.schema.json
 examples/acme/      a made-up org's role overlays and repo policy, to copy
 install.sh          release installer; scripts/pack.sh builds the release tarball

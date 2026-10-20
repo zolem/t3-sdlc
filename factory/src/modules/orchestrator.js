@@ -3,7 +3,8 @@
 // it executes the actions these functions return.
 
 import path from 'node:path';
-import { activeRepos, advance, decide, findDispatch, DEFAULT_SETTINGS, FOREMAN } from '../lib/pipeline.js';
+import { activeRepos, advance, decide, findDispatch, threadOf, DEFAULT_SETTINGS, DESK, FOREMAN } from '../lib/pipeline.js';
+import { runFilesUrl } from '../lib/serve.js';
 import { availabilityFrom, availabilityFromList, loadPolicy, policyTargets, resolveTargets } from '../lib/policy.js';
 import { CONTRACTS } from '../lib/contracts.js';
 import { commonRoot, currentBranch, repoRoot, sha } from '../lib/git.js';
@@ -25,14 +26,51 @@ export function envFor(home, runId) {
   };
 }
 
-/** @param {string} home @param {string} runId */
 /** @param {string} home @param {string} runId @param {string} [scope] */
 function step(home, runId, scope = FOREMAN) {
-  return mutateRun(home, runId, run => {
-    if (scope !== FOREMAN && !run.repos[scope]) throw new Error(`Unknown repo "${scope}" (run repos: ${Object.keys(run.repos).join(', ')})`);
+  const res = mutateRun(home, runId, run => {
+    if (scope !== FOREMAN && scope !== DESK && !run.repos[scope]) throw new Error(`Unknown repo "${scope}" (run repos: ${Object.keys(run.repos).join(', ')})`);
     const acts = advance(run, envFor(home, runId), scope);
-    return { runId, scope, status: run.status, cursor: run.cursor, ...(scope !== FOREMAN ? { phase: run.repoState?.[scope]?.phase } : {}), actions: acts };
+    return { runId, scope, status: run.status, cursor: run.cursor, ...(scope !== FOREMAN && scope !== DESK ? { phase: run.repoState?.[scope]?.phase } : {}), actions: acts };
   });
+  // The user's thread opens pages by link rather than pasting them through a model.
+  for (const a of res.actions) {
+    if (a.type !== 'gate') continue;
+    let base;
+    try {
+      base = runFilesUrl(home, runId);
+    } catch {
+      base = `file://${path.join(runDir(home, runId), 'files')}`;
+    }
+    a.url = `${base}/${a.htmlPath}`;
+  }
+  return res;
+}
+
+/**
+ * The run thread drives the foreman scope and every repo whose thread it is
+ * (the primary repo). Returns their actions merged, waiting only when all wait.
+ * @param {string} home @param {string} runId
+ */
+function drive(home, runId) {
+  const run = loadRun(home, runId);
+  const me = run.foreman?.threadId;
+  const scopes = [FOREMAN, ...Object.keys(run.repos).filter(n => me && threadOf(run, n) === me && run.repoState?.[n])];
+  const results = scopes.map(s => step(home, runId, s));
+  const all = results.flatMap(r => r.actions);
+  const work = all.filter(a => !['wait', 'idle'].includes(a.type));
+  const actions = work.some(a => a.type === 'finished') ? [...work.filter(a => a.type === 'notify'), work.find(a => a.type === 'finished')]
+    : work.length ? work
+    : all.some(a => a.type === 'wait') ? [{ type: 'wait', running: all.flatMap(a => a.running || []) }]
+    : [all.find(a => a.type === 'idle') || { type: 'idle' }];
+  const last = loadRun(home, runId);
+  return { runId, status: last.status, cursor: last.cursor, scopes, actions };
+}
+
+/** Which scope a dispatch's finish should be reported back as. @param {any} run @param {any} d */
+function ownerStep(home, run, d) {
+  const scope = d.scope || FOREMAN;
+  return run.foreman?.threadId && threadOf(run, scope) === run.foreman.threadId ? drive(home, run.id) : step(home, run.id, scope);
 }
 
 /** @param {any} run */
@@ -47,7 +85,23 @@ function routingTable(run) {
       out[role] = `UNROUTABLE: ${err instanceof Error ? err.message : err}`;
     }
   }
+  out.coordinator = run.coordinator ? `${run.coordinator.instanceId}/${run.coordinator.model}` : '(same model as your thread)';
   return out;
+}
+
+/**
+ * Model for the run thread and repo threads: policy role "coordinator", as a
+ * t3_thread_launch modelSelection. Null (inherit the user's thread) when unset.
+ * @param {any} policy @param {any} availability
+ */
+function coordinatorModel(policy, availability) {
+  if (!policy.roles.coordinator) return null;
+  try {
+    const t = resolveTargets({ policy, role: 'coordinator', availability }).targets[0];
+    return { instanceId: t.providerInstanceId, model: t.model, ...(t.options && Object.keys(t.options).length ? { options: t.options } : {}) };
+  } catch {
+    return null;
+  }
 }
 
 /** Cost section of the summary (settings.costReport, on by default). Never fails the summary. @param {string} home @param {any} run */
@@ -61,19 +115,17 @@ function costSection(home, run) {
       '### Cost (API list price)',
       `${c.totals.estimatedUsd ? '~' : ''}${$(c.totals.usd)}${c.totals.estimatedUsd ? ` (${$(c.totals.measuredUsd)} measured + ${$(c.totals.estimatedUsd)} estimated)` : ''} · ${c.totals.wallMinutes} min wall · ${c.totals.tokens.total >= 1e6 ? `${(c.totals.tokens.total / 1e6).toFixed(1)}M` : `${Math.round(c.totals.tokens.total / 1000)}k`} tokens${c.totals.unmeasured ? ` · ${c.totals.unmeasured} unmeasured` : ''}`,
       ...c.byPhase.map(p => `- ${p.label}: ${$(p.usd + p.estimatedUsd)}${p.wallMinutes !== null ? `, ${p.wallMinutes} min` : ''}`),
-      `Full report: \`${c.htmlPath}\`. Show it: factory.run.read({ runId: "${run.id}", path: "${c.runPath}" }), then html_render.`,
+      `Cost page: ${(() => { try { return `${runFilesUrl(home, run.id)}/${c.runPath}`; } catch { return c.htmlPath; } })()}`,
     ];
   } catch (err) {
     return ['', `Cost report unavailable: ${err instanceof Error ? err.message : err}`];
   }
 }
 
-const ACTION_HELP = `Execute every action in order:
+const ACTION_HELP = `You are the user's thread: you start the run and then only handle what a person decides.
+- launch-driver: start the run thread as action.how says, then factory.orchestrator.launched({ runId, repo: action.repo, threadId, driver: true }). Tell the user the run started (one line, with a link to the run thread), and end your turn.
 - notify: t3_thread_send the message to action.threadId, then factory.orchestrator.sent({ runId, id }).
-- launch (foreman): start the repo thread as action.how says, then factory.orchestrator.launched({ runId, repo, threadId }).
-- dispatch: call delegate_task with exactly action.delegate (task, target, isolation, role, mode, title, clientRequestId), then factory.orchestrator.started({ runId, dispatchId, taskId, childThreadId }). Start all dispatch actions before waiting.
-- wait / idle: end your turn. A finished child or a message from another thread wakes you; then call factory.orchestrator.finished(...) or next(...).
-- gate / blocked / publish / done / checkout / finished: follow action.how.`;
+- gate / blocked / done / idle: follow action.how.`;
 
 /** @type {import('../registry.js').ModuleDef} */
 export default {
@@ -135,6 +187,7 @@ export default {
         }
         // `available` (a short list the orchestrator checked) is preferred: copying the whole capabilities payload by hand drops models and options.
         const availability = Array.isArray(available) ? availabilityFromList(available) : availabilityFrom(capabilities);
+        const coordinator = coordinatorModel(policy, availability);
         const unavailable = targets.filter(t => !(availability.available[t.slice(0, t.indexOf('/'))] || []).includes(t.slice(t.indexOf('/') + 1)));
         /** @type {Record<string, any>} */
         const repos = {};
@@ -146,7 +199,9 @@ export default {
           intake,
           repo: primary,
           repos,
-          foreman: { threadId },
+          desk: { threadId },
+          foreman: { threadId: null },
+          coordinator,
           repoState: {},
           outbox: [],
           workspace: { name: ws.name, app: ws.app },
@@ -161,29 +216,40 @@ export default {
         createRunDir(ctx.home, run);
         writeRunFile(ctx.home, id, 'brief.md', briefText.trim() + '\n');
         ledger(ctx.home, id, { event: 'run.started', title: runTitle, repo: root, repos: Object.keys(repos), capabilities: run.capabilities, intake, routing, unavailable, policySources: sources.map(s => s.layer) });
-        const first = step(ctx.home, id);
+        const first = step(ctx.home, id, DESK);
         return { runId: id, title: runTitle, runFolder: path.join(runDir(ctx.home, id), 'files'), routing, unavailable, ...first, help: ACTION_HELP };
       },
     },
     next: {
-      signature: 'factory.orchestrator.next({ runId: string, repo?: string /* repo threads pass their repo; the foreman omits it */ }): Promise<{ scope, status, cursor, phase?, actions }>',
-      description: "Advance the pipeline and return the actions for your scope (the foreman, or one repo's thread). Safe to call any time (idempotent).",
+      signature: 'factory.orchestrator.next({ runId: string, repo?: string /* other repos\' threads pass their repo */, scope?: "desk" /* the user\'s thread */ }): Promise<{ status, cursor, actions }>',
+      description: "Advance the pipeline and return the actions for your thread: the user's thread (scope \"desk\"), the run thread (no repo: foreman plus the repos it drives), or another repo's thread. Safe to call any time (idempotent).",
       tags: ['continue', 'resume', 'advance'],
-      handler: ({ runId, repo }, ctx) => step(ctx.home, runId, repo || FOREMAN),
+      handler: ({ runId, repo, scope }, ctx) => {
+        const run = loadRun(ctx.home, runId);
+        // Runs started before the run thread existed: the user's thread is the foreman.
+        if (!run.desk) return step(ctx.home, runId, repo || FOREMAN);
+        if (scope === DESK) return step(ctx.home, runId, DESK);
+        const driver = run.foreman?.threadId;
+        // The run thread drives the primary repo too; any call it makes gets everything it drives.
+        if (driver && (!repo || threadOf(run, repo) === driver)) return drive(ctx.home, runId);
+        return step(ctx.home, runId, repo || FOREMAN);
+      },
     },
     launched: {
-      signature: 'factory.orchestrator.launched({ runId: string, repo: string, threadId: string }): Promise<{ scope, actions }>',
-      description: 'Foreman: record the T3 thread launched for a repo (from a launch action).',
-      tags: ['launch', 'repo thread'],
-      handler: ({ runId, repo, threadId }, ctx) => {
+      signature: 'factory.orchestrator.launched({ runId: string, repo: string, threadId: string, driver?: boolean /* the run thread, from a launch-driver action */ }): Promise<{ actions }>',
+      description: "Record a thread launched for the run: the run thread (driver: true; it also drives that repo) or another repo's thread.",
+      tags: ['launch', 'repo thread', 'run thread'],
+      handler: ({ runId, repo, threadId, driver }, ctx) => {
         mutateRun(ctx.home, runId, run => {
           if (!run.repos[repo]) throw new Error(`Unknown repo "${repo}"`);
           run.repos[repo].thread = { threadId, launchedAt: now() };
+          if (driver) run.foreman = { threadId, launchedAt: now() };
           // The launch message already tells the thread to start; drop older queued pings to it.
-          for (const m of run.outbox || []) if (m.to === repo && !m.sent) m.sent = true;
+          for (const m of run.outbox || []) if ((m.to === repo || (driver && m.to === FOREMAN)) && !m.sent) m.sent = true;
         });
-        ledger(ctx.home, runId, { event: 'repo.launched', repo, threadId });
-        return step(ctx.home, runId, FOREMAN);
+        ledger(ctx.home, runId, { event: driver ? 'run.thread' : 'repo.launched', repo, threadId });
+        if (driver) return step(ctx.home, runId, DESK);
+        return loadRun(ctx.home, runId).foreman?.threadId && loadRun(ctx.home, runId).desk ? drive(ctx.home, runId) : step(ctx.home, runId, FOREMAN);
       },
     },
     sent: {
@@ -229,7 +295,8 @@ export default {
           const ms = d.startedAt ? Date.parse(d.finishedAt) - Date.parse(d.startedAt) : null;
           ledger(ctx.home, runId, { event: 'dispatch.finished', dispatchId, role: d.role, mode: d.mode, target: d.target, family: d.family, outcome: d.status, taskStatus: status, durationMs: ms, promptHash: d.promptHash, error: d.error });
         });
-        return step(ctx.home, runId, findDispatch(loadRun(ctx.home, runId), dispatchId).scope || FOREMAN);
+        const run = loadRun(ctx.home, runId);
+        return ownerStep(ctx.home, run, findDispatch(run, dispatchId));
       },
     },
     decide: {
@@ -238,7 +305,8 @@ export default {
       tags: ['approve', 'gate', 'review', 'human', 'feedback'],
       handler: ({ runId, gate, decision, notes, scope, repos }, ctx) => {
         mutateRun(ctx.home, runId, run => decide(run, { gate, decision, notes, scope, repos }, envFor(ctx.home, runId)));
-        return step(ctx.home, runId, FOREMAN);
+        // The decision wakes the run thread; the user's thread sends that message.
+        return step(ctx.home, runId, loadRun(ctx.home, runId).desk ? DESK : FOREMAN);
       },
     },
     status: {
