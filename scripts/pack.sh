@@ -1,5 +1,9 @@
 #!/bin/sh
-# Build the release tarball: dist/t3-sdlc.tar.gz (the app layout ~/.t3-sdlc/app expects) and dist/install.sh.
+# Build the release assets:
+#   dist/t3-sdlc.tar.gz      the app layout ~/.t3-sdlc/app expects (and the source INSTALL.md copies skills from)
+#   dist/install.sh          the factory installer for engineers
+#   dist/INSTALL.md          the one-line, agent-driven install for every role
+#   dist/skill-<name>.zip    each role-kit skill as an uploadable zip (Claude desktop and claude.ai)
 # Usage: scripts/pack.sh [version]   version defaults to package.json's; a leading "v" is dropped.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -9,7 +13,7 @@ STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 
 cd "$ROOT"
-cp -R roles policy skills docs examples LICENSE README.md package.json "$STAGE/"
+cp -R roles policy skills kit docs examples LICENSE README.md INSTALL.md package.json "$STAGE/"
 mkdir -p "$STAGE/factory"
 cp -R factory/bin factory/src factory/package.json "$STAGE/factory/"
 cp factory/package-lock.json "$STAGE/factory/"
@@ -22,4 +26,9 @@ fi
 mkdir -p dist
 tar -czf dist/t3-sdlc.tar.gz -C "$STAGE" .
 cp install.sh dist/install.sh
+cp INSTALL.md dist/INSTALL.md
+rm -f dist/skill-*.zip
+for s in $(node -p "require('./kit/roles.json').kitSkills.join(' ')"); do
+  (cd skills && zip -qr "$ROOT/dist/skill-$s.zip" "$s" -x '*.DS_Store')
+done
 echo "dist/t3-sdlc.tar.gz ($(node -p "require('$STAGE/package.json').version"))"

@@ -1,0 +1,19 @@
+{
+  "$comment": "Who installs what. INSTALL.md describes the same mapping for agents, with the same role and stage ids; a test keeps them in sync.",
+  "stages": {
+    "spec": { "label": "Product spec", "skills": ["write-product-spec"] },
+    "screens": { "label": "Screen index", "skills": ["build-screen-index"] },
+    "review": { "label": "Design review and acceptance cases", "skills": ["review-design"] },
+    "build": { "label": "Architecture, build and review (the t3-sdlc factory)", "skills": [], "factory": true },
+    "setup": { "label": "Team profile (whoever sets t3-sdlc up for the team)", "skills": ["create-team-profile"] }
+  },
+  "always": ["check-handoff"],
+  "roles": {
+    "product": { "label": "Product manager", "stages": ["spec"] },
+    "design": { "label": "Designer", "stages": ["screens", "review"] },
+    "engineering": { "label": "Engineer", "stages": ["build"] },
+    "qa": { "label": "QA", "stages": [] },
+    "lead": { "label": "Team lead setting t3-sdlc up for others", "stages": ["setup"] }
+  },
+  "kitSkills": ["write-product-spec", "build-screen-index", "review-design", "check-handoff", "create-team-profile"]
+}

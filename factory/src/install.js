@@ -122,7 +122,8 @@ export async function install({ fromDir, dev = false }) {
       const existing = lstat(link);
       if (!s.linked) {
         // Internal skills are served by `t3-sdlc skill`; drop links an older install left.
-        if (existing?.isSymbolicLink()) fs.unlinkSync(link);
+        // Role-kit skills are installed by role (INSTALL.md), possibly right here: only drop our own link.
+        if (existing?.isSymbolicLink() && (!s.kit || fs.readlinkSync(link) === target)) fs.unlinkSync(link);
         continue;
       }
       if (existing && !existing.isSymbolicLink()) {
