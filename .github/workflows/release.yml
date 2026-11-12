@@ -1,7 +1,8 @@
 name: release
 
 # Bump "version" in package.json and merge to main: this tags v<version> and publishes a
-# GitHub release with t3-sdlc.tar.gz and install.sh. Merges without a bump do nothing.
+# GitHub release with t3-sdlc.tar.gz, install.sh, INSTALL.md and one skill-<name>.zip per
+# role-kit skill. Merges without a bump do nothing.
 # Users install the latest with:
 #   curl -fsSL https://github.com/zolem/t3-sdlc/releases/latest/download/install.sh | sh
 #   (private repo: gh release download --repo zolem/t3-sdlc --pattern install.sh --output - | sh)
@@ -71,3 +72,5 @@ jobs:
           files: |
             dist/t3-sdlc.tar.gz
             dist/install.sh
+            dist/INSTALL.md
+            dist/skill-*.zip

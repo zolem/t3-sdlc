@@ -36,13 +36,23 @@ export function cliCommand() {
   return fs.existsSync(launcher) ? launcher : 't3-sdlc';
 }
 
-/** Skills shipped in the app. Internal ones are served by `t3-sdlc skill <name>` but not linked into agent skill folders. */
+/**
+ * Skills shipped in the app. Linked ones are linked into agent skill folders on install.
+ * Internal ones are served by `t3-sdlc skill <name>` only. Role-kit skills are copied by
+ * whoever installs them (INSTALL.md picks them by role), and are also served here.
+ * @type {Record<string, { linked: boolean, kit?: boolean }>}
+ */
 export const SKILLS = {
   orchestrate: { linked: true },
   'orchestrate-setup': { linked: true },
   'generate-brief': { linked: true },
   'orchestrate-run': { linked: false },
   'orchestrate-repo': { linked: false },
+  'write-product-spec': { linked: false, kit: true },
+  'build-screen-index': { linked: false, kit: true },
+  'review-design': { linked: false, kit: true },
+  'check-handoff': { linked: false, kit: true },
+  'create-team-profile': { linked: false, kit: true },
 };
 
 /** @param {string} name */
