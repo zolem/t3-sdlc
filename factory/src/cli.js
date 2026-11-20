@@ -15,6 +15,7 @@ import { CONTRACT_FILE } from './lib/repoContract.js';
 import { git } from './lib/git.js';
 import { SKILLS, VERSION, cliCommand, homeDir, skillFile } from './lib/paths.js';
 import { install, uninstall, update } from './install.js';
+import { check as checkHandoff, loadDocs, report as handoffReport } from '../../kit/check.mjs';
 
 const FULL_ACCESS = 't3-sdlc needs full access: it keeps run state in ~/.t3-sdlc, outside this checkout, and this thread cannot write there. Switch this thread to Full access in T3 and retry.';
 
@@ -44,6 +45,9 @@ Repo tools
   ${cli} doctor [path] [--verify] [--json]   can the factory run this repo? what is missing?
   ${cli} init [path] [--write]               propose .orchestrate/factory.json
   ${cli} check <name>                        built-in checks for factory.json (${Object.keys(BUILTINS).join(', ')})
+
+Handoff files (product spec, screen index, design spec)
+  ${cli} spec check <folder or files> [--json]   what is missing before each file can be handed on
 
 Install
   ${cli} version | update | uninstall [--purge]
@@ -153,7 +157,7 @@ export async function main(argv) {
     case 'skill': {
       const name = positional[0];
       if (!name) {
-        for (const [n, s] of Object.entries(SKILLS)) console.log(`${n}${s.linked ? '' : '  (internal)'}`);
+        for (const [n, s] of Object.entries(SKILLS)) console.log(`${n}${s.linked ? '' : s.kit ? '  (role kit: installed by role, see INSTALL.md)' : '  (internal)'}`);
         return 0;
       }
       const file = skillFile(name);
@@ -211,6 +215,25 @@ export async function main(argv) {
       const res = builtin.run({ cwd, base, head, args: [...args, ...extra], testCases });
       console.log(res.summary);
       return res.ok ? 0 : 1;
+    }
+
+    case 'spec': {
+      const [sub, ...targets] = positional;
+      if (sub !== 'check' || !targets.length) {
+        console.error('usage: t3-sdlc spec check <folder or files…> [--json]');
+        return 2;
+      }
+      let docs;
+      try {
+        docs = loadDocs(targets.map(t => path.resolve(t)));
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        return 2;
+      }
+      const res = checkHandoff(docs);
+      if (flags.json) print(res);
+      else console.log(handoffReport(res));
+      return res.findings.some(f => f.severity === 'error') || !docs.length ? 1 : 0;
     }
 
     case 'install':

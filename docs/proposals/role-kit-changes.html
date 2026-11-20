@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What changes: main → PR #8 → this change</title>
+<style>
+  :root {
+    --fg: var(--foreground, #1b2230); --muted-c: var(--muted-foreground, #5d6676); --line: var(--border, #d9dee6); --surface: var(--card, #fff);
+    --main: #8a93a3; --pr: #c77700; --now: #3b5bdb; --index: #0f8f7e; --gone: #d93025; --ok: #1f9d55;
+    --main-soft: color-mix(in srgb, var(--main) 14%, transparent);
+    --pr-soft: color-mix(in srgb, var(--pr) 12%, transparent);
+    --now-soft: color-mix(in srgb, var(--now) 11%, transparent);
+    --index-soft: color-mix(in srgb, var(--index) 12%, transparent);
+    --gone-soft: color-mix(in srgb, var(--gone) 9%, transparent);
+    --ok-soft: color-mix(in srgb, var(--ok) 11%, transparent);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--fg); font: 14px/1.45 var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif); }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 6px 0 20px; }
+  h1 { font-size: 26px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; margin: 0; }
+  .lede { color: var(--muted-c); margin: 4px 0 14px; max-width: 95ch; }
+  .cols { display: grid; grid-template-columns: 0.9fr 0.95fr 1.25fr; gap: 8px; align-items: start; }
+  @media (max-width: 600px) { .cols { grid-template-columns: 1fr; } }
+  .col { border-radius: 12px; padding: 8px; border: 1px solid var(--line); background: var(--surface); }
+  .col > header { margin-bottom: 10px; }
+  .col > header p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted-c); }
+  .col.main { border-top: 5px solid var(--main); }
+  .col.pr { border-top: 5px solid var(--pr); }
+  .col.now { border-top: 5px solid var(--now); }
+  .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 99px; margin-left: 6px; vertical-align: 2px; }
+  .main .pill { background: var(--main-soft); }
+  .pr .pill { background: var(--pr-soft); color: var(--pr); }
+  .now .pill { background: var(--now-soft); color: var(--now); }
+
+  .step { border: 1.5px solid var(--line); border-radius: 9px; padding: 6px 8px; background: var(--surface); }
+  .step h3 { margin: 0 0 2px; font-size: 13.5px; }
+  .step h3 .who { font-weight: 500; color: var(--muted-c); font-size: 12px; display: block; }
+  .step p, .step li { font-size: 12.5px; color: var(--muted-c); margin: 0; }
+  .step ul { margin: 3px 0 0; padding-left: 14px; }
+  .step.new { border-color: var(--now); background: var(--now-soft); }
+  .step.newi { border-color: var(--index); background: var(--index-soft); }
+  .step.gone { border-style: dashed; border-color: var(--gone); background: var(--gone-soft); }
+  .step.gone h3 { text-decoration: line-through; text-decoration-color: var(--gone); }
+  .step.same { border-style: dashed; }
+  .step.eng { background: var(--main-soft); }
+  .arrow { text-align: center; color: var(--muted-c); font-size: 14px; line-height: 1; margin: 2px 0; }
+  .file { display: inline-block; font: 500 11px ui-monospace, Menlo, monospace; padding: 1px 7px; border-radius: 99px; background: var(--main-soft); color: var(--fg); margin-top: 4px; }
+  .room { border: 2px solid var(--now); border-radius: 10px; padding: 5px; }
+  .room > .label { font-size: 11.5px; font-weight: 700; color: var(--now); margin: 0 0 6px 2px; text-transform: uppercase; letter-spacing: .04em; }
+  .loop { font-size: 11.5px; color: var(--now); font-weight: 600; margin-top: 4px; }
+  .newi .loop { color: var(--index); }
+  .note { font-size: 12px; color: var(--muted-c); margin: 8px 2px 0; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; color: var(--muted-c); font-weight: 600; }
+  th.m { border-top: 4px solid var(--main); } th.p { border-top: 4px solid var(--pr); } th.n { border-top: 4px solid var(--now); }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  td.n { background: var(--now-soft); }
+  .sect { margin-top: 18px; }
+  .same-box { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 600px) { .same-box { grid-template-columns: 1fr; } }
+  .box { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); font-size: 13px; }
+  .box b { display: block; margin-bottom: 3px; }
+  .box.ok b { color: var(--ok); }
+  .box.gap b { color: var(--pr); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted-c); margin: 0 0 10px; }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -2px; border: 1.5px solid var(--line); }
+  .legend .l-new::before { border-color: var(--now); background: var(--now-soft); }
+  .legend .l-idx::before { border-color: var(--index); background: var(--index-soft); }
+  .legend .l-gone::before { border: 1.5px dashed var(--gone); background: var(--gone-soft); }
+  .legend .l-same::before { border-style: dashed; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.92em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>What changes: main → PR #8 → this change</h1>
+  <p class="lede">Only the product and design steps before engineering change. On main there is no spec or design step: an idea becomes a brief and goes straight to <code>orchestrate</code>. PR #8 added skills that pass files from one person to the next. This change turns them into one working session with the room.</p>
+
+  <div class="legend"><span class="l-new">new or reworked in this change</span><span class="l-idx">screen index, new as a drawn page</span><span class="l-gone">removed in this change</span><span class="l-same">unchanged</span></div>
+
+  <div class="cols">
+    <!-- MAIN -->
+    <section class="col main">
+      <header><h2>main today <span class="pill">merged</span></h2><p>One person, a short chat, then engineering.</p></header>
+      <div class="step">
+        <h3>Idea or ticket</h3>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step">
+        <h3><code>generate-brief</code> <span class="who">· whoever starts it</span></h3>
+        <ul>
+          <li>Up to 6 questions, 1–2 at a time</li>
+          <li>Problem, users, must/should, constraints, success criteria</li>
+          <li>Open questions are allowed to stay open</li>
+        </ul>
+        <span class="file">brief (in chat)</span>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step eng">
+        <h3><code>orchestrate</code> <span class="who">· engineering</span></h3>
+        <p>An AI plans from the brief → you approve the plan → build → review → you approve the PRs.</p>
+      </div>
+      <p class="note">No screens, no edge-case list, no completeness check. The AI works out design and edge cases while planning, or nobody does.</p>
+    </section>
+
+    <!-- PR #8 -->
+    <section class="col pr">
+      <header><h2>PR #8 <span class="pill">committed, step 1</span></h2><p>Each person works alone and passes a file to the next.</p></header>
+      <div class="step gone">
+        <h3><code>create-team-profile</code> <span class="who">· a lead, once</span></h3>
+        <p>Personas, vocabulary and rules for the whole team.</p>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step">
+        <h3><code>write-product-spec</code> <span class="who">· PM alone</span></h3>
+        <ul>
+          <li>AI writes a draft first, then 5–6 question rounds to fill the gaps</li>
+          <li>Open questions get an owner and a due date</li>
+          <li>Check says complete or not</li>
+        </ul>
+        <span class="file">spec.md</span>
+      </div>
+      <div class="arrow">↓ handed on</div>
+      <div class="step">
+        <h3><code>build-screen-index</code> <span class="who">· designer alone</span></h3>
+        <p>A Markdown list of screens and states, in tables.</p>
+        <span class="file">screen-index.md</span>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step same">
+        <h3>Designer draws → <code>review-design</code></h3>
+        <span class="file">design-spec.md</span>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step eng"><h3>Engineering (<code>orchestrate</code>)</h3></div>
+    </section>
+
+    <!-- NOW -->
+    <section class="col now">
+      <header><h2>This change <span class="pill">uncommitted</span></h2><p>One working session: you drive, and the PM and designer talk.</p></header>
+      <div class="room">
+        <div class="label">In the room</div>
+        <div class="step new">
+          <h3><code>write-product-spec</code> <span class="who">· PM leads</span></h3>
+          <ul>
+            <li><b>Asks first:</b> says what it understood, asks rounds of up to 4 with suggested answers, then writes</li>
+            <li><b>Room review:</b> conflicts first, then scope, suggestions to confirm, open questions, what could be cut</li>
+          </ul>
+          <div class="loop">agree · change · edit by hand · pause → until nothing is open</div>
+          <span class="file">spec.md + change log</span>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="step newi">
+          <h3><code>build-screen-index</code> <span class="who">· designer leads</span></h3>
+          <ul>
+            <li>3 questions: existing screens? extend or add? devices?</li>
+            <li><b>Drawn wireflows</b> of every screen and state, side-scrolling</li>
+            <li><b>Edge cases and errors table:</b> every ⚠️ ❌ in the spec, and where it shows</li>
+          </ul>
+          <div class="loop">walk through · change · edit by hand · update spec · pause</div>
+          <span class="file">screen-index.html + change log</span>
+        </div>
+      </div>
+      <div class="arrow">↓ after</div>
+      <div class="step same">
+        <h3>Designer draws → <code>review-design</code></h3>
+        <span class="file">design-spec.md</span>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step eng"><h3>Engineering (<code>orchestrate</code>)</h3></div>
+    </section>
+  </div>
+
+  <div class="sect">
+    <h2>Side by side</h2>
+    <table>
+      <tr><th></th><th class="m">main</th><th class="p">PR #8</th><th class="n">This change</th></tr>
+      <tr><td>Who</td><td>One person</td><td>PM, then the designer, separately</td><td class="n">The room together, one driver</td></tr>
+      <tr><td>Order</td><td>Questions, then a brief</td><td>Draft first, then questions</td><td class="n">Questions first, then the spec</td></tr>
+      <tr><td>Agreement</td><td>None before the plan gate</td><td>Check passes, then the file is handed on</td><td class="n">Review loop until the room agrees and nothing is open</td></tr>
+      <tr><td>Open questions</td><td>Can stay open</td><td>Owner and due date</td><td class="n">None left open by the end; pause if needed</td></tr>
+      <tr><td>Conflicting rules</td><td>Not looked for</td><td>Not looked for</td><td class="n">Flagged first; the room picks which wins</td></tr>
+      <tr><td>Screens</td><td>None</td><td>Markdown tables</td><td class="n">Drawn wireflows in one HTML page</td></tr>
+      <tr><td>Edge cases</td><td>The AI's guess at plan time</td><td>In the spec only</td><td class="n">In the spec, and placed on a screen (table flags unplaced ones)</td></tr>
+      <tr><td>History</td><td>None</td><td>Version number</td><td class="n">Change log on both files, one bump per round</td></tr>
+      <tr><td>Ids</td><td>None</td><td>Generated from titles</td><td class="n">Readable names the AI writes</td></tr>
+      <tr><td>Team profile</td><td>None</td><td>Required setup step</td><td class="n">Removed</td></tr>
+    </table>
+  </div>
+
+  <div class="same-box">
+    <div class="box ok"><b>Unchanged</b><code>orchestrate</code> and the whole engineering pipeline (plan gate, build, review, PR gate), <code>generate-brief</code>, <code>review-design</code> and <code>check-handoff</code>.</div>
+    <div class="box gap"><b>Not connected yet</b><code>orchestrate</code> doesn't read <code>spec.md</code> or the screen index on its own. You'd paste or point at the spec as the brief. Feeding them straight into task breakout is the next step.</div>
+  </div>
+</div>
+</body>
+</html>

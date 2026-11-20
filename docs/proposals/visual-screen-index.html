@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screen index · Invite teammates</title>
+<!--
+  Visual screen index (prototype). One self-contained file.
+  The AI writes only the JSON in #screen-index below; the script at the bottom draws everything.
+  A checker reads the same JSON, so "every screen has every state" stays machine-checkable.
+-->
+<style>
+  :root {
+    --ink: #1f2328; --muted: #6e7781; --line: #c9ced4; --fill: #eef0f2; --fill2: #dfe3e7; --bg: #f7f7f5;
+    --behavior: #2f6feb; --edge: #b7791f; --error: #cf222e; --perm: #8250df; --ok: #1a7f37;
+    --sketch: "Comic Neue", "Chalkboard SE", "Segoe Print", "Bradley Hand", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1400px; margin: 0 auto; padding: 28px 28px 80px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 40px 0 6px; }
+  h3 { font-size: 15px; margin: 0; }
+  .sub { color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: #fff; border: 1px solid var(--line); }
+  .chip.persona { border-color: var(--perm); color: var(--perm); }
+  .chip.rule { cursor: help; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; margin-top: 12px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+  nav.toc { margin-top: 12px; font-size: 13px; }
+  nav.toc a { color: var(--behavior); margin-right: 12px; }
+
+  /* coverage matrix */
+  table.matrix { border-collapse: collapse; background: #fff; margin-top: 10px; font-size: 13px; }
+  .matrix th, .matrix td { border: 1px solid var(--line); padding: 5px 10px; text-align: center; }
+  .matrix th:first-child, .matrix td:first-child { text-align: left; }
+  .matrix .yes { color: var(--ok); } .matrix .na { color: var(--muted); cursor: help; } .matrix .missing { color: var(--error); font-weight: 600; } .matrix .skip { color: var(--line); }
+
+  /* flows */
+  .flow { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-top: 14px; }
+  .lane { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; padding: 12px 2px 4px; }
+  .step { flex: 0 0 280px; }
+  .arrow { flex: 0 0 96px; align-self: stretch; display: flex; flex-direction: column; align-items: center; padding-top: 70px; font-size: 12px; color: var(--behavior); text-align: center; }
+  .arrow svg { width: 88px; height: 18px; }
+  .arrow b { display: inline-flex; width: 18px; height: 18px; border-radius: 99px; background: var(--behavior); color: #fff; font-size: 11px; align-items: center; justify-content: center; margin-bottom: 4px; }
+  .caption { margin: 8px 0 4px; font-weight: 600; font-size: 13px; }
+  .caption .state { font-weight: 400; color: var(--muted); }
+  ul.notes { list-style: none; padding: 0; margin: 4px 0 0; font-size: 12.5px; }
+  ul.notes li { border-left: 3px solid var(--c, var(--line)); padding: 2px 0 2px 8px; margin: 4px 0; }
+  li.behavior { --c: var(--behavior); } li.edge { --c: var(--edge); } li.error { --c: var(--error); } li.perm { --c: var(--perm); }
+  ul.notes li::before { content: attr(data-k); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--c); margin-right: 6px; font-weight: 600; }
+
+  /* screens */
+  .screen { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-top: 14px; }
+  .screen-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .states { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; margin-top: 12px; }
+  .state h4 { margin: 6px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .state p { margin: 0; font-size: 12.5px; }
+  .state.na .frame { opacity: .35; }
+  .state.na h4::after { content: " · n/a"; }
+  .state.missing h4 { color: var(--error); }
+  .state.missing h4::after { content: " · missing"; }
+  .interactions { margin-top: 14px; font-size: 13px; }
+  .interactions td { padding: 4px 10px 4px 0; vertical-align: top; }
+
+  /* wireframe primitives: grey boxes only, real labels, no brand colour */
+  .frame { position: relative; border: 1.5px solid var(--ink); border-radius: 6px; background: #fff; font-family: var(--sketch); font-size: 12px; overflow: hidden; min-height: 170px; }
+  .frame.page { display: grid; grid-template-columns: 46px 1fr; }
+  .frame.page .side { background: var(--fill); border-right: 1px solid var(--line); padding: 8px 6px; }
+  .frame.page .side i { display: block; height: 7px; background: var(--fill2); border-radius: 2px; margin: 6px 0; }
+  .frame .body { padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+  .frame.modal { background: repeating-linear-gradient(45deg, var(--fill), var(--fill) 6px, #f6f7f8 6px, #f6f7f8 12px); padding: 18px 14px; }
+  .frame.modal .body { background: #fff; border: 1.5px solid var(--ink); border-radius: 6px; box-shadow: 3px 3px 0 var(--fill2); }
+  .frame.email .mailhead { background: var(--fill); border-bottom: 1px solid var(--line); padding: 6px 10px; color: var(--muted); font-size: 11px; }
+  .frame.notification { min-height: 0; }
+  .frame.small { transform-origin: top left; }
+  .wf-h { font-weight: 700; font-size: 14px; }
+  .wf-p { color: var(--muted); }
+  .wf-section { font-weight: 700; font-size: 11px; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+  .wf-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .wf-btn { display: inline-block; border: 1.5px solid var(--ink); border-radius: 5px; padding: 2px 9px; background: #fff; white-space: nowrap; }
+  .wf-btn.primary { background: var(--ink); color: #fff; }
+  .wf-btn.disabled { border-color: var(--line); color: var(--line); background: #fff; }
+  .wf-btn.danger { border-color: var(--error); color: var(--error); }
+  .wf-btn.link { border: none; padding: 0; text-decoration: underline; }
+  .wf-input { border: 1.5px solid var(--muted); border-radius: 4px; padding: 3px 7px; color: var(--muted); min-height: 24px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .wf-chip { border: 1px solid var(--muted); border-radius: 99px; padding: 0 7px; color: var(--ink); font-size: 11px; }
+  .wf-chip.bad { border-color: var(--error); color: var(--error); }
+  .wf-chip.skip { border-style: dashed; color: var(--muted); text-decoration: line-through; }
+  .wf-list { border: 1px solid var(--line); border-radius: 4px; }
+  .wf-list > div { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 7px; border-top: 1px solid var(--line); }
+  .wf-list > div:first-child { border-top: none; }
+  .wf-avatar { width: 16px; height: 16px; border-radius: 99px; background: var(--fill2); flex: none; }
+  .wf-skel { height: 12px; border-radius: 3px; background: linear-gradient(90deg, var(--fill), var(--fill2), var(--fill)); }
+  .wf-banner { border: 1.5px dashed var(--muted); border-radius: 4px; padding: 5px 7px; }
+  .wf-banner.error { border-color: var(--error); color: var(--error); }
+  .wf-toast { align-self: flex-end; background: var(--ink); color: #fff; border-radius: 5px; padding: 3px 9px; }
+  .wf-empty { border: 1.5px dashed var(--line); border-radius: 6px; padding: 14px 8px; text-align: center; color: var(--muted); }
+  .wf-empty::before { content: ""; display: block; width: 34px; height: 26px; margin: 0 auto 6px; background: var(--fill2); border-radius: 4px; }
+  .wf-spinner { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .wf-spinner::before { content: ""; width: 12px; height: 12px; border-radius: 99px; border: 2px solid var(--fill2); border-top-color: var(--muted); }
+  .wf-img { height: 46px; background: var(--fill); border-radius: 4px; }
+  .hot { outline: 2px solid var(--behavior); outline-offset: 2px; position: relative; }
+  .hot::after { content: attr(data-n); position: absolute; top: -9px; right: -9px; width: 16px; height: 16px; border-radius: 99px; background: var(--behavior); color: #fff; font: 600 10px/16px system-ui; text-align: center; }
+  @media print { .lane { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<main id="app"></main>
+
+<script type="application/json" id="screen-index">
+{
+  "kind": "screen-index",
+  "feature": "invite-teammates",
+  "title": "Invite teammates to a workspace",
+  "version": 1,
+  "status": "draft",
+  "specVersion": 2,
+  "requiredStates": ["default", "empty", "loading", "error", "denied"],
+  "personas": { "owner": "Workspace owner", "member": "Workspace member", "invitee": "Invited person" },
+  "rules": {
+    "owners-invite": "Owners invite people by email",
+    "owners-invite/seat-limit": "Seat limit shown before sending",
+    "manage-pending": "Owners manage pending invites",
+    "manage-pending/revoke": "Revoke an invite",
+    "manage-pending/resend": "Resend an invite",
+    "members-request": "Members can ask the owner to invite someone",
+    "join": "Invited people join the workspace",
+    "join/existing-account": "Accept with an existing account",
+    "join/new-account": "Accept without an account"
+  },
+  "screens": [
+    {
+      "id": "members-page", "title": "Members page", "type": "page", "change": "update",
+      "personas": ["owner", "member"], "entry": "Settings → Members",
+      "covers": ["owners-invite", "manage-pending", "members-request"],
+      "wireframe": [
+        ["row", [["h", "Members"], ["btn", "Invite people", "primary"]]],
+        ["list", [["Ana Ruiz · Owner"], ["Sam Lee · Member"]]],
+        ["section", "Pending invites"],
+        ["list", [["jo@acme.co · sent 2d ago", "Resend", "Revoke"], ["li@acme.co · Not delivered", "Resend", "Edit email"]]]
+      ],
+      "states": {
+        "default": { "note": "Owners see Invite people; members see Ask owner to invite instead." },
+        "empty": { "note": "Only the owner is listed; a prompt explains why to invite people.",
+          "wireframe": [["h", "Members"], ["list", [["Ana Ruiz · Owner"]]], ["empty", "Work goes faster together. Invite your team."], ["btn", "Invite people", "primary"]] },
+        "loading": { "note": "Skeleton rows for members and pending invites.",
+          "wireframe": [["h", "Members"], ["skel", 3], ["section", "Pending invites"], ["skel", 2]] },
+        "error": { "note": "The list failed to load; Invite people still works.",
+          "wireframe": [["row", [["h", "Members"], ["btn", "Invite people", "primary"]]], ["banner", "Couldn't load members. Retry", "error"]] },
+        "denied": { "na": "Every workspace member can open this page; members just get fewer actions." }
+      },
+      "interactions": [
+        { "trigger": "Revoke on a pending row", "result": "Opens Revoke confirmation", "to": "revoke-confirm" },
+        { "trigger": "Resend on a row older than 10 minutes", "result": "Row shows “Resent just now”; Resend disabled for 10 minutes", "errors": ["Delivery fails → row shows “Not delivered” with Resend and Edit email"] }
+      ]
+    },
+    {
+      "id": "invite-dialog", "title": "Invite people dialog", "type": "modal", "change": "new",
+      "personas": ["owner"], "entry": "Invite people on the Members page",
+      "covers": ["owners-invite", "owners-invite/seat-limit"],
+      "wireframe": [
+        ["h", "Invite people"],
+        ["input", ["ana@acme.co", "jo@acme.co", "!bob@acme", "~sam@acme.co"]],
+        ["p", "3 of 10 seats left"],
+        ["row", [["btn", "Cancel"], ["btn", "Send invites", "primary"]]]
+      ],
+      "states": {
+        "default": { "note": "Typed or pasted addresses become chips; a seats-left counter updates as you add." },
+        "empty": { "note": "No addresses yet; Send invites is disabled.",
+          "wireframe": [["h", "Invite people"], ["input", "Paste or type emails"], ["p", "3 of 10 seats left"], ["row", [["btn", "Cancel"], ["btn", "Send invites", "disabled"]]]] },
+        "loading": { "note": "Sending; the dialog can't be closed until it finishes.",
+          "wireframe": [["h", "Invite people"], ["input", ["ana@acme.co", "jo@acme.co"]], ["row", [["spinner", "Sending…"]]]] },
+        "error": { "note": "Sending failed for everyone; the chips are kept.",
+          "wireframe": [["h", "Invite people"], ["input", ["ana@acme.co", "jo@acme.co"]], ["banner", "Couldn't send invites. Try again", "error"], ["row", [["btn", "Cancel"], ["btn", "Try again", "primary"]]]] },
+        "denied": { "na": "Only owners can open it; members see Ask owner to invite instead." }
+      },
+      "interactions": [
+        { "trigger": "Type or paste addresses", "result": "Each becomes a chip", "errors": ["Invalid address → chip turns red", "Already a member or invited → chip is marked and skipped"] },
+        { "trigger": "Send invites", "result": "Dialog closes, toast “3 invites sent”, rows appear under Pending invites", "to": "members-page" }
+      ]
+    },
+    {
+      "id": "revoke-confirm", "title": "Revoke confirmation", "type": "modal", "change": "new",
+      "personas": ["owner"], "entry": "Revoke on a pending invite",
+      "covers": ["manage-pending/revoke"],
+      "wireframe": [["h", "Revoke this invite?"], ["p", "The link sent to jo@acme.co will stop working."], ["row", [["btn", "Cancel"], ["btn", "Revoke", "danger"]]]],
+      "states": {
+        "default": {},
+        "empty": { "na": "Always opened for exactly one invite." },
+        "loading": { "note": "Revoke shows a spinner.", "wireframe": [["h", "Revoke this invite?"], ["row", [["spinner", "Revoking…"]]]] },
+        "error": { "note": "Shown inside the dialog.", "wireframe": [["h", "Revoke this invite?"], ["banner", "Couldn't revoke. Try again.", "error"], ["row", [["btn", "Cancel"], ["btn", "Revoke", "danger"]]]] },
+        "denied": { "na": "Only reachable by owners." }
+      }
+    },
+    {
+      "id": "invite-landing", "title": "Invite landing page", "type": "page", "change": "new",
+      "personas": ["invitee"], "entry": "Join workspace in the invite email",
+      "covers": ["join", "join/existing-account", "join/new-account"],
+      "wireframe": [["img"], ["h", "Join Acme Design"], ["p", "Ana Ruiz invited you"], ["btn", "Join workspace", "primary"], ["btn", "Create account", "link"]],
+      "states": {
+        "default": { "note": "Join if signed in with the invited email; Create account if signed out." },
+        "empty": { "na": "There is always an invite to show, or the expired-link error." },
+        "loading": { "note": "Centered spinner while the invite is checked.", "wireframe": [["spinner", "Checking your invite…"]] },
+        "error": { "note": "Expired or revoked link.", "wireframe": [["h", "This invite is no longer valid"], ["p", "Ask Ana for a new one."], ["btn", "Ask for a new invite", "primary"]] },
+        "denied": { "note": "Signed in with a different email than the invite.", "wireframe": [["h", "This invite is for a•••@acme.co"], ["p", "You're signed in as sam@gmail.com"], ["btn", "Switch account", "primary"]] }
+      }
+    },
+    {
+      "id": "invite-email", "title": "Invite email", "type": "email", "change": "new",
+      "personas": ["invitee"], "entry": "The invitee's inbox",
+      "covers": ["owners-invite", "manage-pending/resend"],
+      "subject": "Ana invited you to Acme Design",
+      "wireframe": [["h", "Ana Ruiz invited you to Acme Design"], ["p", "Acme Design uses Acme to plan work together."], ["btn", "Join workspace", "primary"], ["p", "This invite expires on 14 March."]],
+      "states": { "default": {} }
+    }
+  ],
+  "flows": [
+    {
+      "id": "owner-invites", "title": "Owner invites three people", "persona": "owner",
+      "covers": ["owners-invite", "owners-invite/seat-limit"],
+      "steps": [
+        { "screen": "members-page", "tap": "Invite people",
+          "notes": [["perm", "Only owners see Invite people; members see Ask owner to invite."]] },
+        { "screen": "invite-dialog", "tap": "Send invites",
+          "notes": [["behavior", "Seats-left counter updates as chips are added."],
+                    ["error", "Invalid address: the chip turns red and is not sent."],
+                    ["edge", "Already a member or already invited: marked and skipped, not an error."],
+                    ["edge", "More addresses than free seats: Send invites is disabled, with Upgrade plan."]] },
+        { "screen": "members-page", "state": "default", "toast": "3 invites sent",
+          "notes": [["behavior", "New rows appear under Pending invites with “sent just now”."]] }
+      ]
+    },
+    {
+      "id": "owner-revokes", "title": "Owner revokes an invite", "persona": "owner",
+      "covers": ["manage-pending/revoke"],
+      "steps": [
+        { "screen": "members-page", "tap": "Revoke", "notes": [["behavior", "Revoke is on every pending row."]] },
+        { "screen": "revoke-confirm", "tap": "Revoke", "notes": [["error", "Revoke fails: message inside the dialog; the invite stays."]] },
+        { "screen": "members-page", "toast": "Invite revoked", "notes": [["behavior", "The row disappears; the link stops working at once."]] }
+      ]
+    },
+    {
+      "id": "invitee-joins", "title": "Invitee joins", "persona": "invitee",
+      "covers": ["join/existing-account", "join/new-account"],
+      "steps": [
+        { "screen": "invite-email", "tap": "Join workspace", "notes": [["edge", "Email never arrives: the owner sees “Not delivered” and can resend."]] },
+        { "screen": "invite-landing", "tap": "Join workspace",
+          "notes": [["error", "Expired or revoked link: “This invite is no longer valid”."],
+                    ["perm", "Signed in as someone else: asked to switch account."],
+                    ["behavior", "Create account has the invited email filled in and locked."]] }
+      ]
+    }
+  ]
+}
+</script>
+
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById('screen-index').textContent);
+  const app = document.getElementById('app');
+  const byId = Object.fromEntries(data.screens.map(s => [s.id, s]));
+  const STATELESS = ['email', 'toast', 'notification', 'sms', 'push'];
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const ruleChip = id => `<span class="chip rule" title="${esc(id)}">${esc(data.rules[id] || id)}</span>`;
+  const personaChip = id => `<span class="chip persona">${esc(data.personas[id] || id)}</span>`;
+
+  // One wireframe block: [kind, ...args]. Small fixed vocabulary so every screen draws the same way.
+  function block(b) {
+    const [k, a, c] = b;
+    switch (k) {
+      case 'h': return `<div class="wf-h">${esc(a)}</div>`;
+      case 'p': return `<div class="wf-p">${esc(a)}</div>`;
+      case 'section': return `<div class="wf-section">${esc(a)}</div>`;
+      case 'btn': return `<span class="wf-btn ${c || ''}" data-label="${esc(a)}">${esc(a)}</span>`;
+      case 'row': return `<div class="wf-row">${a.map(block).join('')}</div>`;
+      case 'input': return `<div class="wf-input">${Array.isArray(a)
+        ? a.map(x => `<span class="wf-chip ${x[0] === '!' ? 'bad' : x[0] === '~' ? 'skip' : ''}">${esc(x.replace(/^[!~]/, ''))}</span>`).join('') : esc(a)}</div>`;
+      case 'list': return `<div class="wf-list">${a.map(([text, ...acts]) =>
+        `<div><span class="wf-row"><span class="wf-avatar"></span>${esc(text)}</span><span class="wf-row">${acts.map(x => block(['btn', x, 'link'])).join('')}</span></div>`).join('')}</div>`;
+      case 'skel': return Array.from({ length: a || 3 }, () => '<div class="wf-skel"></div>').join('');
+      case 'banner': return `<div class="wf-banner ${c || ''}">${esc(a)}</div>`;
+      case 'toast': return `<div class="wf-toast">${esc(a)}</div>`;
+      case 'empty': return `<div class="wf-empty">${esc(a)}</div>`;
+      case 'spinner': return `<div class="wf-spinner">${esc(a || '')}</div>`;
+      case 'img': return '<div class="wf-img"></div>';
+      default: return `<div class="wf-p">[${esc(k)}]</div>`;
+    }
+  }
+
+  function frame(screen, blocks, extra = '') {
+    const body = `<div class="body">${blocks.map(block).join('')}${extra}</div>`;
+    if (screen.type === 'page') return `<div class="frame page"><div class="side"><i></i><i></i><i></i><i></i></div>${body}</div>`;
+    if (screen.type === 'email') return `<div class="frame email"><div class="mailhead">Subject: ${esc(screen.subject || screen.title)}</div>${body}</div>`;
+    return `<div class="frame ${esc(screen.type)}">${body}</div>`;
+  }
+
+  const stateBlocks = (s, state) => (state && state !== 'default' && s.states?.[state]?.wireframe) || s.wireframe;
+  const required = s => STATELESS.includes(s.type) ? ['default'] : data.requiredStates;
+  const stateStatus = (s, st) => !required(s).includes(st) ? 'skip' : st === 'default' || s.states?.[st]?.wireframe ? 'yes' : s.states?.[st]?.na ? 'na' : 'missing';
+
+  const flows = data.flows.map(f => {
+    let n = 0;
+    const parts = f.steps.map((step, i) => {
+      const s = byId[step.screen];
+      if (!s) return `<div class="step"><div class="frame"><div class="body wf-banner error">Unknown screen: ${esc(step.screen)}</div></div></div>`;
+      const hot = step.tap && i < f.steps.length - 1 ? ++n : 0;
+      let html = frame(s, stateBlocks(s, step.state), step.toast ? block(['toast', step.toast]) : '');
+      if (hot) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const target = [...doc.querySelectorAll('[data-label]')].find(e => e.dataset.label === step.tap);
+        if (target) { target.classList.add('hot'); target.dataset.n = hot; }
+        html = doc.body.innerHTML;
+      }
+      const notes = (step.notes || []).map(([k, t]) => `<li class="${k}" data-k="${k === 'perm' ? 'who' : k}">${esc(t)}</li>`).join('');
+      const card = `<div class="step"><a href="#${esc(s.id)}" style="color:inherit;text-decoration:none">${html}</a>
+        <div class="caption">${esc(s.title)} <span class="state">${step.state && step.state !== 'default' ? '· ' + esc(step.state) : ''}</span></div>
+        <ul class="notes">${notes}</ul></div>`;
+      const arrow = hot ? `<div class="arrow"><b>${hot}</b>${esc(step.tap)}<svg viewBox="0 0 88 18"><path d="M2 9h78M74 3l8 6-8 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></div>` : '';
+      return card + arrow;
+    });
+    return `<section class="flow" id="flow-${esc(f.id)}"><h3>${esc(f.title)}</h3>
+      <div class="chips">${personaChip(f.persona)}${f.covers.map(ruleChip).join('')}</div>
+      <div class="lane">${parts.join('')}</div></section>`;
+  }).join('');
+
+  const screens = data.screens.map(s => {
+    const states = required(s).map(st => {
+      const info = s.states?.[st] || {};
+      const status = stateStatus(s, st);
+      return `<div class="state ${status}"><h4>${esc(st)}</h4>${frame(s, stateBlocks(s, st))}<p>${esc(info.na ? info.na : info.note || '')}</p></div>`;
+    }).join('');
+    const ints = (s.interactions || []).map(x => `<tr><td><b>${esc(x.trigger)}</b></td><td>→ ${esc(x.result)}${(x.errors || []).map(e => `<div style="color:var(--error)">⚠ ${esc(e)}</div>`).join('')}</td></tr>`).join('');
+    return `<section class="screen" id="${esc(s.id)}">
+      <div class="screen-head"><div><h3>${esc(s.title)}</h3><div class="sub">${esc(s.type)} · ${s.change === 'new' ? 'new' : 'change to an existing screen'} · reached from: ${esc(s.entry)}</div></div>
+      <div class="chips">${s.personas.map(personaChip).join('')}${s.covers.map(ruleChip).join('')}</div></div>
+      <div class="states">${states}</div>${ints ? `<table class="interactions">${ints}</table>` : ''}</section>`;
+  }).join('');
+
+  const matrix = `<table class="matrix"><tr><th>Screen</th>${data.requiredStates.map(s => `<th>${esc(s)}</th>`).join('')}</tr>${data.screens.map(s =>
+    `<tr><td><a href="#${esc(s.id)}">${esc(s.title)}</a></td>${data.requiredStates.map(st => {
+      const v = stateStatus(s, st);
+      return `<td class="${v}" title="${esc(s.states?.[st]?.na || '')}">${{ yes: '✓', na: 'n/a', missing: 'missing', skip: '—' }[v]}</td>`;
+    }).join('')}</tr>`).join('')}</table>`;
+
+  app.innerHTML = `
+    <h1>Screen index: ${esc(data.title)}</h1>
+    <div class="sub">Built from product spec v${esc(data.specVersion)} · index v${esc(data.version)} · ${esc(data.status)}. Grey boxes on purpose: this is what to design, not how it should look.</div>
+    <div class="legend"><span style="--c:var(--behavior)">Behavior / tap</span><span style="--c:var(--edge)">Edge case</span><span style="--c:var(--error)">Error</span><span style="--c:var(--perm)">Who can see it</span></div>
+    <nav class="toc">Flows: ${data.flows.map(f => `<a href="#flow-${esc(f.id)}">${esc(f.title)}</a>`).join('')}</nav>
+    <h2>What to design</h2><div class="sub">Every screen and the states it needs. n/a always says why.</div>${matrix}
+    <h2>Flows</h2><div class="sub">One per person and goal. Numbered taps lead to the next screen; notes say what can go differently.</div>${flows}
+    <h2>Screens and their states</h2>${screens}`;
+})();
+</script>
+</body>
+</html>
