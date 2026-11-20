@@ -4,7 +4,6 @@ feature: <feature-slug>
 title: <Feature title>
 version: 1
 status: draft
-owner: <product owner>
 ---
 
 # <Feature title>
@@ -23,6 +22,11 @@ owner: <product owner>
 - **<Persona name>** — <who they are, what they are trying to do, and where they use the product>
 
 ## Requirements
+
+**Applies everywhere**
+
+1. <A rule that holds for every requirement, such as a time zone or who can never see something. Delete this part if there are none.>
+   - ✅ <the situation> → <what happens>
 
 ### <What a persona can do>
 
@@ -62,5 +66,4 @@ As a <persona>, I want <to do something>, so <the outcome they care about>.
 ## Open questions
 
 ### <Question>
-- Owner: <who answers it>
-- Due: <date>
+- Options: <the choices on the table, if known>

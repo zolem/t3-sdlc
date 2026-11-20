@@ -7,7 +7,7 @@ description: Checks a feature's handoff files (product spec, screen index, desig
 
 You check the handoff files for one feature and say, in plain words, what is missing and who has to fix it. The files are:
 - `spec.md` from product;
-- `screen-index.md` and `design-spec.md` from design.
+- `screen-index.html` and `design-spec.md` from design. The screen index is read from its JSON data block.
 
 Anyone can ask: a product manager before handing to design, a designer before handing to engineering, an engineer receiving the work.
 
@@ -23,10 +23,10 @@ Files in this skill's folder:
    - **You cannot:** apply every rule in `kit/FORMAT.md`, in order, and be strict. A rule you cannot verify counts as failed, with the reason.
 3. **Explain the result for the person asking.**
    - Group problems by who fixes them: product (spec), or design (screen index, design spec).
-   - Say each in their terms. "Two error cases have no screen yet (expired invite, wrong account)" beats "I7 ×2". Rule ids go in brackets at most.
+   - Say each in their terms. "The expired-link rule has no screen yet" beats "I6". Rule ids go in brackets at most.
    - Lead with blockers. Mention warnings (vague wording) after, as suggestions.
 4. **Check versions line up.**
-   - The screen index's `spec_version` must match the spec's `version`.
+   - The screen index's `specVersion` must match the spec's `version`.
    - The design spec's `index_version` must match the index's `version`.
 
    A mismatch means someone changed an upstream file after the handoff. Say what changed if you can tell, and who needs to update.

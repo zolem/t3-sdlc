@@ -5,7 +5,7 @@ description: Reviews a finished or in-progress design against its screen index a
 
 # Review a design and write the design spec
 
-You check a design against `screen-index.md` and `spec.md`, tell the designer exactly what is missing, and produce `design-spec.md`: the design handoff engineering builds from. It has two parts:
+You check a design against `screen-index.html` and `spec.md`, tell the designer exactly what is missing, and produce `design-spec.md`: the design handoff engineering builds from. It has two parts:
 - **Frames:** a link to every state of every screen, plus copy and behaviour notes the frames cannot show.
 - **Acceptance cases:** the steps someone follows, as each persona, to prove each rule in the spec works. These stay the same whatever architecture engineering chooses, so they are written here, from the spec and the design, not later from the code.
 
@@ -17,22 +17,21 @@ Files in this skill's folder:
 
 ## Before you start
 
-1. **Team profile.** If a skill named `team-profile` is installed (the team makes one with `create-team-profile`), read it: personas, required states, devices, the design tool and how to link frames.
-2. **Inputs.** You need:
-   - the spec and the screen index (files, tracker attachments, or pasted text);
+1. **Inputs.** You need:
+   - the spec and the screen index (files, tracker attachments, or pasted text). The index's content is the JSON data block in `screen-index.html`; read that rather than the drawn page;
    - the design, in whatever form you can read, from best to worst:
      - a design tool you can read through a connector (for example a Figma file link);
      - exported frames or screenshots the designer uploads;
      - a list of frame links the designer pastes, one per state.
 
    If you cannot see the design at all, say so: you can still build the frame list and the acceptance cases with the designer filling in links, but you cannot judge whether a state is actually drawn.
-3. **What you can do here.**
+2. **What you can do here.**
    - Can write files → write `design-spec.md` next to the other two. Cannot → keep it in one Markdown block.
    - Can run code → run `node <this skill's folder>/kit/check.mjs <folder>`. Cannot → apply `kit/FORMAT.md` by hand.
 
 ## Review the design
 
-1. **Map frames to the index.** For each screen in the index and each of its required states, find the frame that shows it.
+1. **Map frames to the index.** For each screen in the index and each state it asks to draw (required states that aren't n/a or unchanged, plus extra states such as `over-limit`), find the frame that shows it. Its wireframe and note say what the frame must contain.
    - Frames named by id and state ("invite-dialog / empty") map directly.
    - Otherwise match by content and confirm the uncertain matches with the designer in one batch, not one by one.
 2. **Report gaps, grouped so the designer can work through them:**
@@ -42,7 +41,7 @@ Files in this skill's folder:
    - **Persona variants:** a member who sees fewer actions, a guest's read-only view.
    - **Interactions the frames don't explain:** what happens after Send, where focus goes, what undo looks like.
    - **Narrow-screen and long-text cases**, for the devices the profile lists.
-   - **Unindexed screens:** in the design but not in the index. Either the index is missing them (update it and bump its version) or they are out of scope.
+   - **Unindexed screens:** in the design but not in the index. Either the index is missing them (add them to its data block and bump its version) or they are out of scope.
 3. **Judge against the spec, not taste.** A state is missing when the spec or index requires it. Visual opinions are optional suggestions, clearly marked as such, never blockers.
 
 ## Write the design spec
@@ -51,7 +50,7 @@ Fill `design-spec.md` from the template:
 - **`index_version`:** the screen index's version.
 - **`design_file`:** a link to the design file.
 - **One entry per screen** (`` ### <screen name> `id:…` ``, same name and id as the index), with:
-  - `- Frames:` one indented line per required state, with a link, or `n/a — why` matching the index;
+  - `- Frames:` one indented line per state the index asks to draw, with a link, or `n/a — why`. States the index marks n/a or unchanged need no frame;
   - `- Copy:` final copy for messages and buttons;
   - `- Notes:` behaviour the frames cannot show (animation, responsive rules, focus order, timing).
 

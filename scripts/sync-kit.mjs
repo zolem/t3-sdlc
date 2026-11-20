@@ -5,7 +5,7 @@
 //   skills/<skill>/kit/check.mjs        from kit/check.mjs
 //   skills/<skill>/kit/FORMAT.md        from kit/FORMAT.md
 //   skills/<skill>/kit/templates/…      from kit/templates/
-//   skills/<skill>/kit/example/*.md     from examples/acme/handoff/
+//   skills/<skill>/kit/example/…        from examples/acme/handoff/
 //
 // Edit the sources, then run `node scripts/sync-kit.mjs`. The kit test fails when a copy drifts.
 
@@ -31,7 +31,7 @@ export function kitFiles(root = ROOT) {
   };
   walk('kit/templates');
   for (const name of fs.readdirSync(path.join(root, 'examples/acme/handoff')).sort()) {
-    if (name.endsWith('.md')) files.push({ from: `examples/acme/handoff/${name}`, to: `example/${name}` });
+    if (/\.(md|html)$/.test(name)) files.push({ from: `examples/acme/handoff/${name}`, to: `example/${name}` });
   }
   return files;
 }

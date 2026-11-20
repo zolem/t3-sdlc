@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screen index</title>
+<!--
+  t3-sdlc screen index: open this file in any browser.
+  Edit only the JSON in the "screen-index" block below; the script after it draws everything.
+  The data format and the wireframe building blocks are described in FORMAT.md.
+-->
+<style>
+  :root {
+    --ink: #1f2328; --muted: #6e7781; --line: #c9ced4; --fill: #eef0f2; --fill2: #dfe3e7; --bg: #f7f7f5; --paper: #ffffff;
+    --behavior: #2f6feb; --edge: #b7791f; --error: #cf222e; --who: #8250df; --ok: #1a7f37;
+    --sketch: "Comic Neue", "Chalkboard SE", "Segoe Print", "Bradley Hand", system-ui, sans-serif;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1400px; margin: 0 auto; padding: 28px max(16px, 2vw) 80px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 40px 0 6px; }
+  h3 { font-size: 15px; margin: 0; }
+  a { color: var(--behavior); }
+  .sub { color: var(--muted); }
+  .oops { color: var(--error); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--paper); border: 1px solid var(--line); }
+  .chip.persona { border-color: var(--who); color: var(--who); }
+  .chip.rule { cursor: help; }
+  .chip.change { background: var(--fill); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; margin-top: 12px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+  nav.toc { margin-top: 12px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+
+  .tablewrap { overflow-x: auto; }
+  table.matrix { border-collapse: collapse; background: var(--paper); margin-top: 10px; font-size: 13px; }
+  .matrix th, .matrix td { border: 1px solid var(--line); padding: 5px 10px; text-align: center; white-space: nowrap; }
+  .matrix th:first-child, .matrix td:first-child { text-align: left; }
+  .matrix td.extra { text-align: left; color: var(--muted); white-space: normal; }
+  .matrix .draw { color: var(--ok); } .matrix .na, .matrix .same { color: var(--muted); cursor: help; }
+  .matrix .missing { color: var(--error); font-weight: 600; } .matrix .skip { color: var(--line); }
+
+  .flow, .screen, .questions { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-top: 14px; }
+  .lane { display: flex; align-items: flex-start; overflow-x: auto; padding: 12px 2px 4px; }
+  /* Each frame is as wide as its kind of screen (set per screen as --w); the lane scrolls sideways. */
+  .step { flex: 0 0 var(--w, 320px); min-width: 0; }
+  .arrow { flex: 0 0 96px; align-self: stretch; display: flex; flex-direction: column; align-items: center; padding-top: 70px; font-size: 12px; color: var(--behavior); text-align: center; }
+  .arrow svg { width: 88px; height: 18px; }
+  .arrow b { display: inline-flex; width: 18px; height: 18px; border-radius: 99px; background: var(--behavior); color: #fff; font-size: 11px; align-items: center; justify-content: center; margin-bottom: 4px; }
+  .caption { margin: 8px 0 4px; font-weight: 600; font-size: 13px; }
+  .caption .state { font-weight: 400; color: var(--muted); }
+  ul.notes { list-style: none; padding: 0; margin: 4px 0 0; font-size: 12.5px; }
+  ul.notes li { border-left: 3px solid var(--c, var(--line)); padding: 2px 0 2px 8px; margin: 4px 0; }
+  li.behavior { --c: var(--behavior); } li.edge { --c: var(--edge); } li.error { --c: var(--error); } li.who { --c: var(--who); }
+  ul.notes li::before { content: attr(data-k); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--c); margin-right: 6px; font-weight: 600; }
+
+  .screen-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .states { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(var(--w, 320px), 100%), 1fr)); gap: 18px; margin-top: 12px; }
+  .state h4 { margin: 6px 0 2px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .state p { margin: 0; font-size: 12.5px; }
+  .state.na .frame, .state.same .frame { opacity: .35; }
+  .state.na h4::after { content: " · n/a"; }
+  .state.same h4::after { content: " · unchanged"; }
+  .state.missing h4 { color: var(--error); }
+  .state.missing h4::after { content: " · missing"; }
+  .interactions { margin-top: 14px; font-size: 13px; border-collapse: collapse; }
+  .interactions td { padding: 4px 12px 4px 0; vertical-align: top; }
+  .cases { border-collapse: collapse; width: 100%; background: var(--paper); font-size: 13px; }
+  .cases th, .cases td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; vertical-align: top; }
+  .cases th { background: var(--fill); font-weight: 600; }
+  .cases td.rule { color: var(--muted); width: 26%; }
+  .cases td.where { width: 26%; }
+  .cases td.where a { display: block; }
+  .cases .unplaced { color: var(--error); font-weight: 600; }
+  .questions li { margin: 6px 0; }
+  .questions .proposal { color: var(--muted); }
+  .questions .answer { color: var(--ok); }
+  .changes { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--behavior); border-radius: 6px; padding: 10px 14px; margin-top: 14px; font-size: 13px; }
+  .changes ul { margin: 4px 0 0; padding-left: 18px; }
+  .changes details { margin-top: 6px; color: var(--muted); }
+
+  /* Wireframe building blocks: grey boxes, real labels, no brand colour. */
+  .frame { position: relative; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--paper); font-family: var(--sketch); font-size: 12px; overflow: hidden; min-height: 170px; }
+  .frame .body { padding: 10px; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  .frame.page { display: grid; grid-template-columns: 34px minmax(0, 1fr); }
+  .frame.page .side { background: var(--fill); border-right: 1px solid var(--line); padding: 8px 6px; }
+  .frame.page .side i { display: block; height: 7px; background: var(--fill2); border-radius: 2px; margin: 6px 0; }
+  .hatch { background: repeating-linear-gradient(45deg, var(--fill), var(--fill) 6px, #f6f7f8 6px, #f6f7f8 12px); }
+  .frame.modal { padding: 18px 14px; }
+  .frame.modal .body { background: var(--paper); border: 1.5px solid var(--ink); border-radius: 6px; box-shadow: 3px 3px 0 var(--fill2); }
+  .frame.drawer { display: grid; grid-template-columns: 90px minmax(0, 1fr); }
+  .frame.drawer .body { border-left: 1.5px solid var(--ink); background: var(--paper); }
+  .frame.panel { border-style: dashed; }
+  .frame.panel .inside { font-family: system-ui, sans-serif; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 10px 0; }
+  .frame.email .mailhead { background: var(--fill); border-bottom: 1px solid var(--line); padding: 6px 10px; color: var(--muted); font-size: 11px; }
+  .frame.small { min-height: 0; }
+  .wf-h { font-weight: 700; font-size: 14px; }
+  .wf-p { color: var(--muted); }
+  .wf-section { font-weight: 700; font-size: 11px; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+  .wf-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .wf-cols { display: grid; gap: 6px; }
+  .wf-card { border: 1.5px solid var(--line); border-radius: 5px; padding: 6px; display: flex; flex-direction: column; gap: 5px; }
+  .wf-btn { display: inline-block; border: 1.5px solid var(--ink); border-radius: 5px; padding: 2px 9px; background: var(--paper); white-space: nowrap; }
+  .wf-btn.primary { background: var(--ink); color: #fff; }
+  .wf-btn.disabled { border-color: var(--line); color: var(--line); }
+  .wf-btn.danger { border-color: var(--error); color: var(--error); }
+  .wf-btn.link { border: none; padding: 0; text-decoration: underline; background: none; }
+  .wf-label { font-size: 11px; color: var(--muted); }
+  .wf-input { border: 1.5px solid var(--muted); border-radius: 4px; padding: 3px 7px; min-height: 24px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .wf-input.ph { color: var(--muted); }
+  .wf-input.select::after { content: "▾"; margin-left: auto; color: var(--muted); }
+  .wf-chip { border: 1px solid var(--muted); border-radius: 99px; padding: 0 7px; font-size: 11px; }
+  .wf-chip.bad { border-color: var(--error); color: var(--error); }
+  .wf-chip.skip { border-style: dashed; color: var(--muted); text-decoration: line-through; }
+  .wf-toggle { display: inline-block; width: 24px; height: 13px; border-radius: 99px; border: 1.5px solid var(--muted); position: relative; flex: none; }
+  .wf-toggle::after { content: ""; position: absolute; top: 1px; left: 1px; width: 8px; height: 8px; border-radius: 99px; background: var(--muted); }
+  .wf-toggle.on { background: var(--ink); border-color: var(--ink); }
+  .wf-toggle.on::after { left: auto; right: 1px; background: #fff; }
+  .wf-tabs { display: flex; gap: 12px; border-bottom: 1px solid var(--line); }
+  .wf-tabs span { padding-bottom: 3px; color: var(--muted); }
+  .wf-tabs span.on { color: var(--ink); border-bottom: 2px solid var(--ink); font-weight: 700; }
+  .wf-list { border: 1px solid var(--line); border-radius: 4px; }
+  .wf-list > div { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 7px; border-top: 1px solid var(--line); }
+  .wf-list > div:first-child { border-top: none; }
+  .wf-avatar { width: 16px; height: 16px; border-radius: 99px; background: var(--fill2); flex: none; }
+  .wf-skel { height: 12px; border-radius: 3px; background: linear-gradient(90deg, var(--fill), var(--fill2), var(--fill)); }
+  .wf-banner { border: 1.5px dashed var(--muted); border-radius: 4px; padding: 5px 7px; }
+  .wf-banner.error { border-color: var(--error); color: var(--error); }
+  .wf-banner.warn { border-color: var(--edge); color: var(--edge); }
+  .wf-err { color: var(--error); font-size: 11px; }
+  .wf-badge { display: inline-block; border-radius: 99px; padding: 0 7px; font-size: 10.5px; background: var(--fill2); color: var(--ink); white-space: nowrap; }
+  .wf-toast { align-self: flex-end; background: var(--ink); color: #fff; border-radius: 5px; padding: 3px 9px; }
+  .wf-empty { border: 1.5px dashed var(--line); border-radius: 6px; padding: 14px 8px; text-align: center; color: var(--muted); }
+  .wf-empty::before { content: ""; display: block; width: 34px; height: 26px; margin: 0 auto 6px; background: var(--fill2); border-radius: 4px; }
+  .wf-spinner { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .wf-spinner::before { content: ""; width: 12px; height: 12px; border-radius: 99px; border: 2px solid var(--fill2); border-top-color: var(--muted); }
+  .wf-img { height: 46px; background: var(--fill); border-radius: 4px; }
+  .wf-divider { border: none; border-top: 1px solid var(--line); margin: 2px 0; width: 100%; }
+  .wf-input.readonly { border-color: transparent; padding-left: 0; }
+  .wf-input.disabled { border-color: var(--line); color: var(--line); }
+  .wf-input.date::after { content: "▦"; margin-left: auto; color: var(--muted); }
+  .wf-days { display: flex; gap: 3px; }
+  .wf-days span { width: 20px; height: 20px; border: 1.5px solid var(--muted); border-radius: 99px; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; }
+  .wf-days span.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .wf-menu { position: relative; display: inline-flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .wf-menu .items { border: 1.5px solid var(--ink); border-radius: 5px; background: var(--paper); box-shadow: 3px 3px 0 var(--fill2); min-width: 110px; }
+  .wf-menu .items span { display: block; padding: 3px 9px; border-top: 1px solid var(--line); }
+  .wf-menu .items span:first-child { border-top: none; }
+  .wf-icon { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 10.5px; }
+  .wf-icon::before { content: ""; width: 12px; height: 12px; border: 1.5px dashed var(--muted); border-radius: 3px; }
+  .wf-unknown { color: var(--error); }
+  .hot { outline: 2px solid var(--behavior); outline-offset: 2px; position: relative; }
+  .hot::after { content: attr(data-n); position: absolute; top: -9px; right: -9px; width: 16px; height: 16px; border-radius: 99px; background: var(--behavior); color: #fff; font: 600 10px/16px system-ui; text-align: center; }
+  @media print { .lane { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<main id="app"><noscript>This screen index needs JavaScript to draw its wireframes. Its content is in the "screen-index" block of the page source.</noscript></main>
+
+<script type="application/json" id="screen-index">
+{
+  "kind": "screen-index",
+  "feature": "<feature-slug>",
+  "title": "<Feature title>",
+  "version": 1,
+  "status": "draft",
+  "specVersion": "<the spec's version>",
+  "requiredStates": ["default", "empty", "loading", "error", "denied"],
+  "devices": ["<what the designer designs for: web, iPhone…>"],
+  "personas": {},
+  "rules": {},
+  "screens": [
+    {
+      "id": "",
+      "title": "<Screen name>",
+      "type": "page",
+      "change": "new",
+      "personas": ["<persona-id>"],
+      "entry": "<every way people get here>",
+      "covers": ["<rule-id>"],
+      "wireframe": [["h", "<Heading>"], ["btn", "<Main action>", "primary"]],
+      "states": {
+        "default": { "note": "<what is on screen normally>" },
+        "empty": { "note": "<nothing yet, and what invites the first action>", "wireframe": [["empty", "<message>"]] },
+        "loading": { "note": "<what shows while it loads>", "wireframe": [["skel", 3]] },
+        "error": { "note": "<what failed, what is kept, how to recover>", "wireframe": [["banner", "<message>", "error"]] },
+        "denied": { "na": "<why someone without permission can't get here>" }
+      },
+      "interactions": [{ "trigger": "<what the person does>", "result": "<what changes, and what shows if it fails>" }]
+    }
+  ],
+  "flows": [
+    {
+      "id": "",
+      "title": "<Persona> <does the main thing>",
+      "persona": "<persona-id>",
+      "covers": ["<rule-id>"],
+      "steps": [{ "screen": "", "tap": "<Main action>", "notes": [["behavior", "<what happens>"]] }]
+    }
+  ],
+  "cases": [],
+  "questions": [],
+  "changes": []
+}
+</script>
+
+<script>
+(() => {
+  const app = document.getElementById('app');
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let data;
+  try {
+    data = JSON.parse(document.getElementById('screen-index').textContent);
+  } catch (err) {
+    app.innerHTML = `<p class="oops">The screen-index data block isn't valid JSON: ${esc(err.message)}</p>`;
+    return;
+  }
+  document.title = `Screen index: ${data.title || data.feature || ''}`;
+  const screens = data.screens || [];
+  const flows = data.flows || [];
+  const byId = Object.fromEntries(screens.map(s => [s.id, s]));
+  const STATELESS = ['email', 'toast', 'notification', 'sms', 'push'];
+  const SMALL = ['toast', 'notification', 'sms', 'push'];
+  /** Frame width per screen type. A panel is as wide as the screen it sits in. */
+  const WIDTH = { page: 640, drawer: 520, modal: 400, email: 440, panel: 440, toast: 300, notification: 320, sms: 300, push: 300 };
+  const width = s => (s.type === 'panel' && byId[s.inside] && byId[s.inside].type !== 'panel' ? width(byId[s.inside]) : WIDTH[s.type] || 400);
+  const REQUIRED = data.requiredStates || ['default', 'empty', 'loading', 'error', 'denied'];
+  const NOTE_KINDS = { behavior: 'behavior', edge: 'edge', error: 'error', who: 'who', perm: 'who' };
+  const personaChip = id => `<span class="chip persona">${esc((data.personas || {})[id] || id)}</span>`;
+  const ruleChip = id => `<span class="chip rule" title="id:${esc(id)}">${esc((data.rules || {})[id] || id)}</span>`;
+
+  // One building block: [kind, ...args]. A small fixed vocabulary so every screen draws the same way.
+  function block(b) {
+    if (!Array.isArray(b)) return '';
+    const [k, a, c] = b;
+    const btn = (label, variant) => `<span class="wf-btn ${esc(variant || '')}" data-label="${esc(label)}">${esc(label)}</span>`;
+    const val = v => (String(v ?? '').startsWith('~') ? { ph: true, text: String(v).slice(1) } : { ph: false, text: v ?? '' });
+    switch (k) {
+      case 'h': return `<div class="wf-h" data-label="${esc(a)}">${esc(a)}</div>`;
+      case 'p': return `<div class="wf-p">${esc(a)}</div>`;
+      case 'section': return `<div class="wf-section">${esc(a)}</div>`;
+      case 'btn': return btn(a, c);
+      case 'row': return `<div class="wf-row">${(a || []).map(block).join('')}</div>`;
+      case 'cols': return `<div class="wf-cols" style="grid-template-columns:repeat(${(a || []).length || 1},minmax(0,1fr))">${(a || []).map(col => `<div class="wf-card">${(col || []).map(block).join('')}</div>`).join('')}</div>`;
+      case 'card': return `<div class="wf-card">${(a || []).map(block).join('')}</div>`;
+      case 'input': return Array.isArray(a)
+        ? `<div class="wf-input">${a.map(x => `<span class="wf-chip ${x[0] === '!' ? 'bad' : x[0] === '~' ? 'skip' : ''}">${esc(String(x).replace(/^[!~]/, ''))}</span>`).join('')}</div>`
+        : `<div class="wf-input ph">${esc(a)}</div>`;
+      case 'field':
+      case 'select':
+      case 'date': {
+        const v = val(c);
+        const mode = b[3] === 'readonly' || b[3] === 'disabled' ? b[3] : '';
+        return `<div data-label="${esc(a)}"><div class="wf-label">${esc(a)}</div><div class="wf-input ${v.ph ? 'ph' : ''} ${mode || k}">${esc(v.text)}</div></div>`;
+      }
+      case 'days': {
+        const on = (c || []).map(d => String(d).slice(0, 3).toLowerCase());
+        return `<div data-label="${esc(a)}"><div class="wf-label">${esc(a)}</div><div class="wf-days">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<span class="${on.includes(d.toLowerCase()) ? 'on' : ''}" title="${d}">${d[0]}</span>`).join('')}</div></div>`;
+      }
+      case 'toggle': return `<div class="wf-row" data-label="${esc(a)}"><span class="wf-toggle ${c ? 'on' : ''}"></span>${esc(a)}</div>`;
+      case 'check': return `<div class="wf-row" data-label="${esc(a)}">${c ? '☑' : '☐'} ${esc(a)}</div>`;
+      case 'radio': return `<div>${(a || []).map((o, i) => {
+        const [label, ...inner] = Array.isArray(o) ? o : [o];
+        return `<div class="wf-row"><span data-label="${esc(label)}">${i === c ? '◉' : '○'} ${esc(label)}</span>${inner.map(block).join('')}</div>`;
+      }).join('')}</div>`;
+      case 'tabs': return `<div class="wf-tabs">${(a || []).map((t, i) => `<span class="${i === (c || 0) ? 'on' : ''}" data-label="${esc(t)}">${esc(t)}</span>`).join('')}</div>`;
+      case 'list': return `<div class="wf-list">${(a || []).map(([text, ...acts]) =>
+        `<div><span class="wf-row" data-label="${esc(text)}"><span class="wf-avatar"></span>${esc(text)}</span><span class="wf-row">${acts.map(x => btn(x, 'link')).join('')}</span></div>`).join('')}</div>`;
+      case 'menu': return `<span class="wf-menu">${btn('More').replace('>More<', '>⋯<')}${c ? `<span class="items">${(a || []).map(x => `<span data-label="${esc(x)}">${esc(x)}</span>`).join('')}</span>` : ''}</span>`;
+      case 'icon': return `<span class="wf-icon">${esc(a)}</span>`;
+      case 'skel': return Array.from({ length: a || 3 }, () => '<div class="wf-skel"></div>').join('');
+      case 'banner': return `<div class="wf-banner ${esc(c || '')}">${esc(a)}</div>`;
+      case 'err': return `<div class="wf-err">${esc(a)}</div>`;
+      case 'badge': return `<span class="wf-badge">${esc(a)}</span>`;
+      case 'toast': return `<div class="wf-toast">${esc(a)}</div>`;
+      case 'empty': return `<div class="wf-empty">${esc(a)}</div>`;
+      case 'spinner': return `<div class="wf-spinner">${esc(a)}</div>`;
+      case 'img': return '<div class="wf-img"></div>';
+      case 'divider': return '<hr class="wf-divider">';
+      default: return `<div class="wf-unknown">[unknown block: ${esc(k)}]</div>`;
+    }
+  }
+
+  function frame(s, blocks, extra = '') {
+    const body = `<div class="body">${(blocks || []).map(block).join('')}${extra}</div>`;
+    switch (s.type) {
+      case 'page': return `<div class="frame page"><div class="side"><i></i><i></i><i></i><i></i></div>${body}</div>`;
+      case 'modal': return `<div class="frame modal hatch">${body}</div>`;
+      case 'drawer': return `<div class="frame drawer"><div class="hatch"></div>${body}</div>`;
+      case 'panel': return `<div class="frame panel"><div class="inside">Inside ${esc(byId[s.inside]?.title || s.inside || 'another screen')}</div>${body}</div>`;
+      case 'email': return `<div class="frame email"><div class="mailhead">Subject: ${esc(s.subject || s.title)}</div>${body}</div>`;
+      default: return `<div class="frame ${SMALL.includes(s.type) ? 'small' : ''}">${body}</div>`;
+    }
+  }
+
+  const required = s => (STATELESS.includes(s.type) ? ['default'] : REQUIRED);
+  const extras = s => Object.keys(s.states || {}).filter(k => !REQUIRED.includes(k));
+  /** What the index says about one state of a screen: draw it, n/a, unchanged, or missing. */
+  function stateInfo(s, st) {
+    const v = (s.states || {})[st] || {};
+    if (st === 'default') return { status: 'draw', blocks: s.wireframe, note: v.note };
+    if (v.na !== undefined) return { status: 'na', blocks: s.wireframe, note: v.na };
+    if (v.unchanged !== undefined) return { status: 'same', blocks: s.wireframe, note: v.unchanged };
+    if (Array.isArray(v.wireframe) && v.wireframe.length) return { status: 'draw', blocks: v.wireframe, note: v.note };
+    return { status: 'missing', blocks: [], note: v.note };
+  }
+  const allStates = s => [...required(s), ...extras(s)];
+  const toDraw = s => allStates(s).filter(st => stateInfo(s, st).status === 'draw').length;
+
+  function markTap(html, label, n) {
+    const t = document.createElement('template');
+    t.innerHTML = html;
+    const want = String(label).trim().toLowerCase();
+    const all = [...t.content.querySelectorAll('[data-label]')].filter(e => e.dataset.label.trim().toLowerCase() === want);
+    const target = all.find(e => e.classList.contains('wf-btn')) || all[0];
+    if (target) { target.classList.add('hot'); target.dataset.n = n; }
+    return t.innerHTML;
+  }
+
+  const flowHtml = flows.map(f => {
+    let n = 0;
+    const parts = (f.steps || []).map((step, i, all) => {
+      const s = byId[step.screen];
+      if (!s) return `<div class="step" style="--w:320px"><div class="frame small"><div class="body oops">Unknown screen: ${esc(step.screen)}</div></div></div>`;
+      const info = step.state ? stateInfo(s, step.state) : stateInfo(s, 'default');
+      const hot = step.tap && i < all.length - 1 ? ++n : 0;
+      let html = frame(s, info.blocks, step.toast ? block(['toast', step.toast]) : '');
+      if (hot) html = markTap(html, step.tap, hot);
+      const notes = (step.notes || []).map(([k, t]) => {
+        const kind = NOTE_KINDS[k] || 'behavior';
+        return `<li class="${kind}" data-k="${kind}">${esc(t)}</li>`;
+      }).join('');
+      const card = `<div class="step" style="--w:${width(s)}px"><a href="#${esc(s.id)}" style="color:inherit;text-decoration:none">${html}</a>
+        <div class="caption">${esc(s.title)} <span class="state">${step.state && step.state !== 'default' ? '· ' + esc(step.state) : ''}</span></div>
+        <ul class="notes">${notes}</ul></div>`;
+      const arrow = hot ? `<div class="arrow"><b>${hot}</b>${esc(step.tap)}<svg viewBox="0 0 88 18" aria-hidden="true"><path d="M2 9h78M74 3l8 6-8 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></div>` : '';
+      return card + arrow;
+    });
+    return `<section class="flow" id="flow-${esc(f.id)}"><h3>${esc(f.title)}</h3>
+      <div class="chips">${personaChip(f.persona)}${(f.covers || []).map(ruleChip).join('')}</div>
+      <div class="lane">${parts.join('')}</div></section>`;
+  }).join('');
+
+  const screenHtml = screens.map(s => {
+    const states = allStates(s).map(st => {
+      const info = stateInfo(s, st);
+      return `<div class="state ${info.status}"><h4>${esc(st)}</h4>${frame(s, info.blocks)}<p>${esc(info.note || '')}</p></div>`;
+    }).join('');
+    const ints = (s.interactions || []).map(x => `<tr><td><b>${esc(x.trigger)}</b></td><td>→ ${esc(x.result)}${x.to && byId[x.to] ? ` <a href="#${esc(x.to)}">(${esc(byId[x.to].title)})</a>` : ''}${(x.errors || []).map(e => `<div style="color:var(--error)">⚠ ${esc(e)}</div>`).join('')}</td></tr>`).join('');
+    const change = s.change === 'update' ? 'change to an existing screen' : 'new';
+    return `<section class="screen" id="${esc(s.id)}">
+      <div class="screen-head"><div><h3>${esc(s.title)}</h3><div class="sub">${esc(s.type)} · ${change} · reached from: ${esc(s.entry)}</div></div>
+      <div class="chips">${(s.personas || []).map(personaChip).join('')}${(s.covers || []).map(ruleChip).join('')}</div></div>
+      <div class="states" style="--w:${width(s)}px">${states}</div>${ints ? `<table class="interactions">${ints}</table>` : ''}</section>`;
+  }).join('');
+
+  const placeName = w => {
+    const [sid, st] = String(w).split('/');
+    const scr = byId[sid];
+    const flow = flows.find(f => f.id === sid);
+    if (scr) return `<a href="#${esc(sid)}">${esc(scr.title)}${st && st !== 'default' ? ` · ${esc(st)}` : ''}</a>`;
+    if (flow) return `<a href="#flow-${esc(sid)}">Flow: ${esc(flow.title)}</a>`;
+    return `<span class="unplaced">${esc(w)} (not found)</span>`;
+  };
+  const caseRows = (data.cases || []).map(c => `<tr><td class="rule">${esc((data.rules || {})[c.rule] || c.rule)}</td><td>${esc(c.example)}</td><td class="where">${(c.where || []).length ? c.where.map(placeName).join('') : '<span class="unplaced">Not placed yet</span>'}</td></tr>`).join('');
+  const unplaced = (data.cases || []).filter(c => !(c.where || []).length).length;
+  const cases = caseRows ? `<h2 id="cases">Edge cases and errors</h2><div class="sub">Every ⚠️ and ❌ example in the spec, and where it shows.${unplaced ? ` <span class="unplaced">${unplaced} not placed yet.</span>` : ''}</div>
+    <div class="tablewrap"><table class="cases"><tr><th>Rule</th><th>Example</th><th>Shows on</th></tr>${caseRows}</table></div>` : '';
+  const symbol = { draw: '✓', na: 'n/a', same: 'same', missing: 'missing', skip: '—' };
+  const matrix = `<div class="tablewrap"><table class="matrix"><tr><th>Screen</th>${REQUIRED.map(st => `<th>${esc(st)}</th>`).join('')}<th>Also</th></tr>${screens.map(s =>
+    `<tr><td><a href="#${esc(s.id)}">${esc(s.title)}</a> <span class="sub">${s.change === 'update' ? 'changed' : 'new'}</span></td>${REQUIRED.map(st => {
+      if (!required(s).includes(st)) return `<td class="skip">${symbol.skip}</td>`;
+      const info = stateInfo(s, st);
+      return `<td class="${info.status}" title="${esc(info.status === 'na' || info.status === 'same' ? info.note : '')}">${symbol[info.status]}</td>`;
+    }).join('')}<td class="extra">${extras(s).map(esc).join(', ')}</td></tr>`).join('')}</table></div>`;
+
+  const updated = screens.filter(s => s.change === 'update').length;
+  const totalDraw = screens.reduce((n, s) => n + toDraw(s), 0);
+  const questions = (data.questions || []).map(q => `<li>${esc(q.question)}${q.answer ? ` <span class="answer">Decided: ${esc(q.answer)}</span>` : q.proposal ? ` <span class="proposal">Proposed: ${esc(q.proposal)}</span>` : ''}</li>`).join('');
+  const open = (data.questions || []).filter(q => !q.answer).length;
+  const [latest, ...older] = [...(data.changes || [])].sort((x, y) => (y.version || 0) - (x.version || 0));
+  const changeList = c => `<ul>${(c.notes || []).map(n => `<li>${esc(n)}</li>`).join('')}</ul>`;
+  const changes = latest ? `<div class="changes"><b>What changed in v${esc(latest.version)}</b>${changeList(latest)}${older.length ? `<details><summary>Earlier versions</summary>${older.map(c => `<div>v${esc(c.version)}</div>${changeList(c)}`).join('')}</details>` : ''}</div>` : '';
+
+  app.innerHTML = `
+    <h1>Screen index: ${esc(data.title || data.feature)}</h1>
+    <div class="sub">Built from product spec v${esc(data.specVersion)} · index v${esc(data.version)} · ${esc(data.status)}.
+      ${screens.length} screens (${screens.length - updated} new, ${updated} changed) · ${totalDraw} states to draw · ${flows.length} flows${open ? ` · <a href="#questions">${open} open question${open === 1 ? '' : 's'}</a>` : ''}.
+      ${(data.devices || []).length ? `Designing for: ${data.devices.map(esc).join(', ')}.` : ''}
+      Grey boxes on purpose: this is what to design, not how it should look.</div>
+    <div class="legend"><span style="--c:var(--behavior)">Behavior / tap</span><span style="--c:var(--edge)">Edge case</span><span style="--c:var(--error)">Error</span><span style="--c:var(--who)">Who can see it</span></div>
+    ${changes}
+    <nav class="toc">Flows: ${flows.map(f => `<a href="#flow-${esc(f.id)}">${esc(f.title)}</a>`).join('')}${caseRows ? ' · <a href="#cases">Edge cases and errors</a>' : ''}</nav>
+    <h2>What to design</h2><div class="sub">Every screen and the states it needs. Hover n/a or "same" for the reason.</div>${matrix}
+    ${cases}
+    <h2>Flows</h2><div class="sub">One per person and goal. Numbered taps lead to the next screen; notes say what can go differently.</div>${flowHtml}
+    <h2>Screens and their states</h2>${screenHtml}
+    ${questions ? `<h2 id="questions">Questions for product</h2><div class="questions"><ul>${questions}</ul></div>` : ''}`;
+})();
+</script>
+</body>
+</html>

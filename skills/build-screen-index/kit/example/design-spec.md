@@ -3,7 +3,7 @@ kind: design-spec
 feature: invite-teammates
 version: 1
 status: ready
-index_version: 1
+index_version: 2
 design_file: https://www.figma.com/design/EXAMPLE/acme-invites
 ---
 
@@ -17,6 +17,7 @@ design_file: https://www.figma.com/design/EXAMPLE/acme-invites
   - empty: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=10-2
   - loading: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=10-3
   - error: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=10-4
+  - as-member: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=10-5
 - Copy: Pending invites rows read "Invited by Priya · 2 days ago". Not delivered rows read "Not delivered · Resend · Edit email".
 - Notes: on narrow screens the Pending invites actions collapse into a ⋯ menu.
 
@@ -26,6 +27,7 @@ design_file: https://www.figma.com/design/EXAMPLE/acme-invites
   - empty: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=20-2
   - loading: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=20-3
   - error: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=20-4
+  - over-limit: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=20-5
 - Copy: seats counter "2 seats left"; over the limit "You have 2 seats left. Remove 1 address or add seats."
 - Notes: paste of up to 200 characters per address; chips wrap; the 21st chip shows "Up to 20 at a time".
 
@@ -45,6 +47,7 @@ design_file: https://www.figma.com/design/EXAMPLE/acme-invites
 ### Invite request notification `id:request-notification`
 - Frames:
   - default: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=50-1
+  - decided: https://www.figma.com/design/EXAMPLE/acme-invites?node-id=50-2
 
 ### Invite email `id:invite-email`
 - Frames:
@@ -104,7 +107,7 @@ What someone (or an AI) does to prove each rule, as each persona. These stay the
 
 ### Invitee with an account joins `id:invitee-existing-joins`
 - Persona: invitee
-- Covers: join-existing
+- Covers: join-existing, no-peeking
 - Steps:
   1. Signed in with the invited email, open the invite link
   2. Choose Join

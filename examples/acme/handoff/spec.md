@@ -4,7 +4,6 @@ feature: invite-teammates
 title: Invite teammates to a workspace
 version: 2
 status: ready
-owner: Priya (product)
 ---
 
 # Invite teammates to a workspace
@@ -26,6 +25,12 @@ Workspace owners can only add people by asking support, which takes about two da
 - **Invited person** — Got an invite email; may not have an Acme account yet. Opens the email on a phone about 60% of the time. `id:invitee`
 
 ## Requirements
+
+**Applies everywhere**
+
+1. Nobody sees a workspace's members before they've joined it. `id:no-peeking`
+   - ✅ An invited person opens the invite page → it shows the workspace name and who invited them, not the member list.
+   - ❌ Someone opens a revoked invite link → "This invite is no longer valid", with no workspace details.
 
 ### Owners invite people by email `id:owners-invite`
 
@@ -106,7 +111,6 @@ As an invited person, I want to join in a couple of taps, so I can start on what
 ## Data and privacy
 
 - Store invite email, inviter, created and expiry time. Delete revoked and expired invites after 30 days.
-- The invite page never shows the workspace's member list before the invite is accepted.
 - Mask the invite email on the wrong-account page (first character and domain only).
 
 ## Analytics
@@ -126,9 +130,12 @@ As an invited person, I want to join in a couple of taps, so I can start on what
 ## Open questions
 
 ### How long should an invite stay valid? `id:invite-expiry`
-- Owner: Priya
+- Options: 7 days; 14 days, like the password reset link; never.
 - Answer: 14 days, matching the password reset link.
 
 ### Do members' requests need every owner to approve? `id:request-approval`
-- Owner: Priya
 - Answer: No. The first owner to approve or decline decides; the others see who did.
+
+## Changes
+
+- v2: Members can ask an owner to invite someone. Nobody sees a workspace's members before joining it.

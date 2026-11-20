@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Product working session: spec → screen index</title>
+<style>
+  :root {
+    --fg: var(--foreground, #1b2230); --muted-c: var(--muted-foreground, #5d6676); --line: var(--border, #d9dee6); --surface: var(--card, #fff);
+    --spec: #3b5bdb; --index: #0f8f7e; --later: #8a93a3; --check: #c77700; --pause: #d93025; --ok: #1f9d55;
+    --spec-soft: color-mix(in srgb, var(--spec) 12%, transparent);
+    --index-soft: color-mix(in srgb, var(--index) 12%, transparent);
+    --later-soft: color-mix(in srgb, var(--later) 14%, transparent);
+    --check-soft: color-mix(in srgb, var(--check) 15%, transparent);
+    --pause-soft: color-mix(in srgb, var(--pause) 10%, transparent);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--fg); font: 15px/1.5 var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 8px 0 24px; }
+  h1 { font-size: 28px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 17px; margin: 0; }
+  .lede { color: var(--muted-c); margin: 6px 0 0; max-width: 80ch; }
+  .room { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+  .who { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; font-size: 13px; }
+  .who b { display: block; font-size: 14px; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr 0.72fr; gap: 18px; align-items: start; }
+  @media (max-width: 980px) { .cols { grid-template-columns: 1fr 1fr; } .col.later { grid-column: 1 / -1; } }
+  @media (max-width: 600px) { .cols { grid-template-columns: 1fr; } }
+  .col { border-radius: 14px; padding: 14px; border: 1px solid var(--line); background: var(--surface); }
+  .col > header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+  .col > header .lead { font-size: 12px; color: var(--muted-c); }
+  .col.spec { border-top: 5px solid var(--spec); }
+  .col.index { border-top: 5px solid var(--index); }
+  .col.later { border-top: 5px solid var(--later); }
+
+  .step { border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); position: relative; }
+  .step h3 { margin: 0 0 3px; font-size: 14.5px; }
+  .step p, .step li { font-size: 13px; color: var(--muted-c); margin: 0; }
+  .step ul { margin: 4px 0 0; padding-left: 18px; }
+  .spec .step.key { border-color: var(--spec); background: var(--spec-soft); }
+  .index .step.key { border-color: var(--index); background: var(--index-soft); }
+  .later .step { border-style: dashed; }
+  .arrow { text-align: center; color: var(--muted-c); font-size: 16px; line-height: 1; margin: 2px 0; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 99px; margin-top: 6px; }
+  .tag.check { color: var(--check); background: var(--check-soft); }
+  .tag.file { color: var(--fg); background: var(--later-soft); font-family: ui-monospace, Menlo, monospace; font-weight: 500; }
+
+  .decide { margin-top: 8px; display: grid; gap: 6px; }
+  .opt { display: grid; grid-template-columns: 22px 1fr; gap: 6px; align-items: start; font-size: 13px; border-radius: 8px; padding: 6px 8px; background: var(--surface); border: 1px solid var(--line); }
+  .opt .i { font-weight: 700; text-align: center; }
+  .opt.agree .i { color: var(--ok); }
+  .opt.loop .i { color: var(--spec); }
+  .index .opt.loop .i { color: var(--index); }
+  .opt.pause { border-color: var(--pause); background: var(--pause-soft); }
+  .opt.pause .i { color: var(--pause); }
+  .opt small { color: var(--muted-c); display: block; }
+
+  .done { border-radius: 10px; padding: 9px 12px; font-weight: 600; font-size: 14px; text-align: center; color: #fff; }
+  .spec .done { background: var(--spec); }
+  .index .done { background: var(--index); }
+  .handoff { text-align: center; font-size: 12.5px; color: var(--muted-c); margin-top: 8px; }
+
+  .checkbox { margin-top: 0; display: grid; grid-template-columns: repeat(3, 1fr) 1.3fr; gap: 12px; }
+  @media (max-width: 980px) { .checkbox { grid-template-columns: 1fr 1fr; } }
+  .cstate { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+  .cstate b { display: block; font-size: 14px; margin-bottom: 2px; }
+  .cstate.fix b { color: var(--pause); }
+  .cstate.open b { color: var(--check); }
+  .cstate.complete b { color: var(--ok); }
+  .cstate.note { background: transparent; border-style: dashed; color: var(--muted-c); }
+  .sect { margin-top: 22px; }
+  .sect h2 { margin-bottom: 10px; }
+  .removed { margin-top: 16px; font-size: 13px; color: var(--muted-c); }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Product working session: spec → screen index</h1>
+  <p class="lede">One laptop shared on screen. The AI writes the files; the room decides. It ends with an agreed spec and screen index, with nothing left open.</p>
+
+  <div class="room">
+    <div class="who"><b>You (driver)</b>Type what the room says, run the session</div>
+    <div class="who"><b>PM</b>Brings the PRD, answers product questions</div>
+    <div class="who"><b>Designer</b>Leads the screen index review</div>
+    <div class="who"><b>AI assistant</b>Drafts, asks, runs the check, makes changes</div>
+  </div>
+
+  <div class="cols">
+    <!-- Part 1 -->
+    <section class="col spec">
+      <header><h2>1 · The spec</h2><span class="lead">PM leads · <code>write-product-spec</code></span></header>
+
+      <div class="step">
+        <h3>Bring what you have</h3>
+        <p>A PRD, a brief, a ticket, notes, or a sentence.</p>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step">
+        <h3>AI says what it understood</h3>
+        <p>"Assignees get reminded before a task is due. Before I write it I need 4 things: guests, overdue, defaults, the metric."</p>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step">
+        <h3>Questions until it understands</h3>
+        <ul>
+          <li>Up to 4 at a time, each with a proposed answer</li>
+          <li>"Yes to all but 3" · "your call" → goes in <i>(proposed)</i> · "don't know" → open question</li>
+          <li>Stops when it can write every section without guessing</li>
+        </ul>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step">
+        <h3>AI writes the spec</h3>
+        <p>Rules with ✅ ⚠️ ❌ examples, permissions, privacy, rollout. Rules that hang on an open question say <i>(waiting on …)</i>.</p>
+        <span class="tag file">spec.md</span> <span class="tag check">check</span>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step key">
+        <h3>Review together</h3>
+        <ul>
+          <li>Scope at a glance: requirements, who, priority</li>
+          <li>Every proposal to confirm, in one numbered list</li>
+          <li>Open questions, with options</li>
+          <li>Where scope could shrink</li>
+        </ul>
+        <div class="decide">
+          <div class="opt agree"><span class="i">✓</span><span>Agree<small>nothing open → mark ready</small></span></div>
+          <div class="opt loop"><span class="i">↺</span><span>Ask for changes<small>"drop the 1-week option" → AI edits → review again</small></span></div>
+          <div class="opt loop"><span class="i">✎</span><span>Edit by hand<small>you change the file → AI re-reads, checks, says what changed → review again</small></span></div>
+          <div class="opt pause"><span class="i">⏸</span><span>Can't answer today<small>pause with the open items listed; resume straight at the review</small></span></div>
+        </div>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="done">Spec agreed · status: ready</div>
+    </section>
+
+    <!-- Part 2 -->
+    <section class="col index">
+      <header><h2>2 · The screen index</h2><span class="lead">Designer leads · <code>build-screen-index</code></span></header>
+
+      <div class="step">
+        <h3>Three questions for the designer</h3>
+        <p>Which existing screens does it touch? Extend them or add new ones? Which devices?</p>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step">
+        <h3>AI drafts it from the spec</h3>
+        <ul>
+          <li>Flows per persona → the screens they stop at → every state of each</li>
+          <li>Every ⚠️ and ❌ example placed, and listed in one table to scan</li>
+          <li>Gaps in the spec become questions for product</li>
+        </ul>
+        <span class="tag file">screen-index.html</span> <span class="tag check">check --sync</span>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step key">
+        <h3>Walk through it on screen</h3>
+        <ul>
+          <li>The headline: screens, states to draw, flows</li>
+          <li>Each flow, with its edge cases</li>
+          <li>"What might be missing" prompts for this feature</li>
+          <li>Questions for product: the PM answers now</li>
+        </ul>
+        <div class="decide">
+          <div class="opt agree"><span class="i">✓</span><span>Agree<small>nothing open → mark ready</small></span></div>
+          <div class="opt loop"><span class="i">↺</span><span>Ask for changes<small>AI edits, bumps the version, adds "What changed in vN" at the top → reload</small></span></div>
+          <div class="opt loop"><span class="i">✎</span><span>Edit by hand<small>AI re-reads, checks, says what changed</small></span></div>
+          <div class="opt loop"><span class="i">⇄</span><span>A change touches the spec<small>AI updates spec.md too, bumps its version, re-checks both</small></span></div>
+          <div class="opt pause"><span class="i">⏸</span><span>Can't answer today<small>pause; resume at the walkthrough</small></span></div>
+        </div>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="done">Screen index agreed · status: ready</div>
+      <p class="handoff">The page is what everyone aligned on, and the designer's to-do list.</p>
+    </section>
+
+    <!-- After -->
+    <section class="col later">
+      <header><h2>3 · After the session</h2><span class="lead">later</span></header>
+      <div class="step">
+        <h3>Designer draws it</h3>
+        <p>In their own tool, every screen and state on the page. Frames named like "invite-dialog / empty".</p>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step">
+        <h3>Design check, when needed</h3>
+        <p><code>review-design</code>: every state has a frame; writes the acceptance cases.</p>
+        <span class="tag file">design-spec.md</span>
+      </div>
+      <div class="arrow">↓</div>
+      <div class="step">
+        <h3>Engineering</h3>
+        <p>Task breakout and the build. Next thing to improve, not part of this pass.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="sect">
+    <h2>What the check says, every time it runs</h2>
+    <div class="checkbox">
+      <div class="cstate fix"><b>To fix</b>Something's missing or broken: a rule with no examples, a screen with no loading state, a tap that points at nothing. The AI fixes it.</div>
+      <div class="cstate open"><b>Still open</b>Listed one by one: unanswered questions, <i>(proposed)</i> items, rules <i>(waiting on …)</i>. These need the room.</div>
+      <div class="cstate complete"><b>Complete</b>Nothing to fix, nothing open. "Set status: ready once everyone agrees."</div>
+      <div class="cstate note">It proves complete and consistent, not good. The review with the room is what makes it right.</div>
+    </div>
+  </div>
+
+  <p class="removed">Out of this flow: setting up a team profile, owners and due dates on questions, tracking who decided what.</p>
+</div>
+</body>
+</html>

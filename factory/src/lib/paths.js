@@ -52,7 +52,6 @@ export const SKILLS = {
   'build-screen-index': { linked: false, kit: true },
   'review-design': { linked: false, kit: true },
   'check-handoff': { linked: false, kit: true },
-  'create-team-profile': { linked: false, kit: true },
 };
 
 /** @param {string} name */
